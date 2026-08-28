@@ -28,6 +28,10 @@ The configurator recognizes the Git-managed plugin and leaves its checkout
 intact, so `omarchy plugin update com.stateset.icommerce` remains the owner of
 shell upgrades.
 
+Requirements are Omarchy Quattro with shell plugin support and the StateSet CLI
+on Node.js 20.20 or newer. The panel prefers a locally installed
+`stateset-omarchy` executable and otherwise uses `npx -y -p @stateset/cli`.
+
 Upgrade atomically with `--force`. If the updated plugin cannot be enabled, the
 installer restores the previous plugin. Remove the shell integration with
 `stateset-omarchy uninstall`; store data, StateSet configuration, and agent
@@ -50,6 +54,19 @@ report, `stateset-omarchy remediate` to open the matching preview-only
 specialist, and `stateset-omarchy doctor` to verify a target desktop installation.
 Shell and menu actions prefer the locally installed controller and use `npx`
 only as a fallback.
+
+## Remove
+
+Remove a native Git installation through Omarchy, then clean up the optional
+StateSet menu and user service:
+
+```bash
+omarchy plugin remove com.stateset.icommerce
+stateset-omarchy uninstall --no-disable
+```
+
+Store data, StateSet configuration, and project agent configuration are
+retained.
 
 ## Security
 
