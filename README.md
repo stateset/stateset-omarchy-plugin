@@ -24,6 +24,10 @@ To configure a store, run this from its project directory:
 npx -y -p @stateset/cli stateset-omarchy install --db ./store.db
 ```
 
+The configurator recognizes the Git-managed plugin and leaves its checkout
+intact, so `omarchy plugin update com.stateset.icommerce` remains the owner of
+shell upgrades.
+
 Upgrade atomically with `--force`. If the updated plugin cannot be enabled, the
 installer restores the previous plugin. Remove the shell integration with
 `stateset-omarchy uninstall`; store data, StateSet configuration, and agent
