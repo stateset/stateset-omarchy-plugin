@@ -161,6 +161,24 @@ function normalizeServiceStatus(value) {
   }
 }
 
+function serviceActionCommand(action) {
+  var allowed = ["install", "start", "stop", "restart"]
+  if (allowed.indexOf(action) < 0) return []
+  var command = ["stateset-omarchy", "service", action]
+  if (action !== "install") command.push("--json")
+  return command
+}
+
+function serviceActionLabel(action, success) {
+  var labels = {
+    install: success ? "MCP service installed" : "Unable to install MCP service",
+    start: success ? "MCP service started" : "Unable to start MCP service",
+    stop: success ? "MCP service stopped" : "Unable to stop MCP service",
+    restart: success ? "MCP service restarted" : "Unable to restart MCP service"
+  }
+  return labels[action] || (success ? "MCP action completed" : "MCP action failed")
+}
+
 function parseServiceStatusJson(text) {
   validateJsonEnvelope(text)
   var value = JSON.parse(text)
@@ -277,6 +295,79 @@ function notificationCandidate(previous, next, policy) {
   }
 }
 
+function normalizeNotificationDelta(value) {
+  var source = record(value)
+  return {
+    failedPayments: boundedCount(source.failedPayments),
+    pendingReturns: boundedCount(source.pendingReturns),
+    lowStock: boundedCount(source.lowStock)
+  }
+}
+
+function filterNotificationDelta(value, policy) {
+  var pending = normalizeNotificationDelta(value)
+  var enabled = record(policy)
+  return {
+    failedPayments: enabled.failedPayments === false ? 0 : pending.failedPayments,
+    pendingReturns: enabled.pendingReturns === false ? 0 : pending.pendingReturns,
+    lowStock: enabled.lowStock === false ? 0 : pending.lowStock
+  }
+}
+
+function notificationDelta(previous, next, policy) {
+  var before = normalizeAlerts(previous)
+  var candidate = notificationCandidate(previous, next, policy)
+  return {
+    failedPayments: Math.max(0, candidate.failedPayments - before.failedPayments),
+    pendingReturns: Math.max(0, candidate.pendingReturns - before.pendingReturns),
+    lowStock: Math.max(0, candidate.lowStock - before.lowStock)
+  }
+}
+
+function mergePendingNotifications(pending, delta, current) {
+  var queued = normalizeNotificationDelta(pending)
+  var incoming = normalizeNotificationDelta(delta)
+  var active = normalizeAlerts(current)
+  return {
+    failedPayments: active.failedPayments > 0
+      ? Math.min(active.failedPayments, queued.failedPayments + incoming.failedPayments) : 0,
+    pendingReturns: active.pendingReturns > 0
+      ? Math.min(active.pendingReturns, queued.pendingReturns + incoming.pendingReturns) : 0,
+    lowStock: active.lowStock > 0
+      ? Math.min(active.lowStock, queued.lowStock + incoming.lowStock) : 0
+  }
+}
+
+function hasPendingNotifications(value) {
+  var pending = normalizeNotificationDelta(value)
+  return pending.failedPayments > 0 || pending.pendingReturns > 0 || pending.lowStock > 0
+}
+
+function pendingNotificationSummary(value) {
+  var pending = normalizeNotificationDelta(value)
+  var parts = []
+  if (pending.failedPayments > 0) parts.push("+" + pending.failedPayments + " failed payment" + (pending.failedPayments === 1 ? "" : "s"))
+  if (pending.lowStock > 0) parts.push("+" + pending.lowStock + " low-stock SKU" + (pending.lowStock === 1 ? "" : "s"))
+  if (pending.pendingReturns > 0) parts.push("+" + pending.pendingReturns + " pending return" + (pending.pendingReturns === 1 ? "" : "s"))
+  return parts.join(" · ")
+}
+
+function parseNotificationState(text) {
+  var fallback = { lastNotificationAt: 0, pending: normalizeNotificationDelta({}) }
+  if (typeof text !== "string" || text.trim() === "") return fallback
+  if (text.length > MAX_ERROR_CHARS) return fallback
+  try {
+    var source = record(JSON.parse(text))
+    var last = Number(source.lastNotificationAt)
+    return {
+      lastNotificationAt: isFinite(last) && last > 0 ? last : 0,
+      pending: normalizeNotificationDelta(source.pending)
+    }
+  } catch (error) {
+    return fallback
+  }
+}
+
 function cooldownElapsed(lastNotificationAt, now, cooldownMinutes) {
   var last = Number(lastNotificationAt)
   var current = Number(now)
@@ -286,6 +377,14 @@ function cooldownElapsed(lastNotificationAt, now, cooldownMinutes) {
   if (!isFinite(minutes)) minutes = 15
   minutes = Math.max(1, Math.min(240, minutes))
   return current - last >= minutes * 60000
+}
+
+function cooldownRemainingMs(lastNotificationAt, now, cooldownMinutes) {
+  if (cooldownElapsed(lastNotificationAt, now, cooldownMinutes)) return 0
+  var last = Number(lastNotificationAt)
+  var current = Number(now)
+  var minutes = Math.max(1, Math.min(240, Number(cooldownMinutes) || 15))
+  return Math.max(0, Math.ceil(last + minutes * 60000 - current))
 }
 
 function retryIntervalSeconds(baseInterval, consecutiveFailures) {
@@ -332,20 +431,30 @@ if (typeof module !== "undefined") {
     formatCount: formatCount,
     formatExactCount: formatExactCount,
     freshnessLabel: freshnessLabel,
+    filterNotificationDelta: filterNotificationDelta,
     normalizeAlerts: normalizeAlerts,
     normalizeCounts: normalizeCounts,
+    normalizeNotificationDelta: normalizeNotificationDelta,
     normalizeStatus: normalizeStatus,
     normalizeServiceStatus: normalizeServiceStatus,
     normalizeUnavailableSignals: normalizeUnavailableSignals,
     parseStatusJson: parseStatusJson,
     parseServiceStatusJson: parseServiceStatusJson,
+    serviceActionCommand: serviceActionCommand,
+    serviceActionLabel: serviceActionLabel,
     classifyFailure: classifyFailure,
     safeText: safeText,
     attentionSummary: attentionSummary,
     attentionHeadline: attentionHeadline,
     cooldownElapsed: cooldownElapsed,
+    cooldownRemainingMs: cooldownRemainingMs,
+    hasPendingNotifications: hasPendingNotifications,
+    mergePendingNotifications: mergePendingNotifications,
     notificationCandidate: notificationCandidate,
+    notificationDelta: notificationDelta,
     notificationSummary: notificationSummary,
+    parseNotificationState: parseNotificationState,
+    pendingNotificationSummary: pendingNotificationSummary,
     retryIntervalSeconds: retryIntervalSeconds,
     retryCountdownLabel: retryCountdownLabel,
     shouldNotify: shouldNotify

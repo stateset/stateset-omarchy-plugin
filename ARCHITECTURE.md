@@ -30,13 +30,18 @@ panel loadable while a service is starting, without fabricating readiness.
 - Commerce changes stay preview-only unless the separately installed
   controller has governed apply configured by the operator.
 - Desktop notifications are derived only from normalized numeric deltas. They
-  honor Omarchy Do Not Disturb, per-signal settings, and a cooldown.
+  are coalesced and persisted under XDG state, honor Omarchy Do Not Disturb and
+  per-signal settings, and deliver after the configured cooldown.
 - Controller schema versions fail closed when newer than this plugin supports.
+- MCP lifecycle mutations use a direct allowlisted process with bounded output,
+  a deadline, inline results, and confirmation for stop/restart. Interactive
+  commerce workflows and logs remain visible in a terminal.
 
 ## Ownership and releases
 
 The canonical runtime source is `cli/omarchy` in `stateset-icommerce`. This
-standalone repository adds validation, fixtures, preview assets, and release
+standalone repository adds validation, a deterministic desktop demo, QML
+runtime fixtures, preview assets, and release
 automation. `scripts/export-to-upstream.sh` copies the runtime back to an
 upstream checkout and applies the companion schema patch; `UPSTREAM.md`
 documents that handoff. Scheduled release synchronization always opens a PR and

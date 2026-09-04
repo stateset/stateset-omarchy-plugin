@@ -20,6 +20,7 @@ fi
 for file in Model.js Panel.qml README.md Service.qml ServiceHost.js manifest.json; do
   cp "$plugin_root/$file" "$upstream/cli/omarchy/$file"
 done
+cp -a "$plugin_root/demo" "$upstream/cli/omarchy/"
 
 # The standalone plugin can publish patch releases independently. The manifest
 # stored in the CLI source tree must still match cli/package.json because the

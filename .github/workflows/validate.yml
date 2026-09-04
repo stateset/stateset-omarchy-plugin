@@ -27,6 +27,10 @@ jobs:
         run: test -z "$(find . -type l -print -quit)"
       - name: Run unit tests
         run: node --test
+      - name: Validate deterministic demo
+        run: |
+          bash -n demo/run scripts/export-to-upstream.sh
+          ./demo/run --check
       - name: Check manifest and whitespace
         run: |
           node -e "JSON.parse(require('node:fs').readFileSync('manifest.json', 'utf8'))"
@@ -62,6 +66,22 @@ jobs:
         run: |
           git clone --filter=blob:none https://github.com/omacom/omarchy.git "$RUNNER_TEMP/omarchy"
           git -C "$RUNNER_TEMP/omarchy" checkout "$OMARCHY_REVISION"
-          /usr/lib/qt6/bin/qmllint --max-warnings 10000 \
+          # Third-party Quickshell and qs modules do not ship qmltypes metadata,
+          # so disable only diagnostics that require those external types. All
+          # remaining analyzable warning classes have a strict zero budget.
+          /usr/lib/qt6/bin/qmllint --max-warnings 0 \
+            --import disable \
+            --unresolved-type disable \
+            --missing-type disable \
+            --missing-property disable \
+            --unqualified disable \
+            --inheritance-cycle disable \
             --json "$RUNNER_TEMP/qmllint.json" \
             -I "$RUNNER_TEMP/omarchy/shell" Panel.qml Service.qml
+      - name: Execute QML service tests
+        run: |
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            /usr/lib/qt6/bin/qmltestrunner \
+              -input test/qml \
+              -import test/qml/imports \
+              -o -,txt

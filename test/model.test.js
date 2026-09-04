@@ -144,6 +144,57 @@ test('applies per-signal notification policy and cooldowns', () => {
   assert.equal(Model.cooldownElapsed(0, 1000, 15), true)
   assert.equal(Model.cooldownElapsed(1000, 1000 + 14 * 60000, 15), false)
   assert.equal(Model.cooldownElapsed(1000, 1000 + 15 * 60000, 15), true)
+  assert.equal(Model.cooldownRemainingMs(1000, 1000 + 14 * 60000, 15), 60000)
+})
+
+test('coalesces exceptional alerts until they can be delivered', () => {
+  const before = { failedPayments: 1, pendingReturns: 0, lowStock: 3 }
+  const after = { failedPayments: 3, pendingReturns: 1, lowStock: 5 }
+  const delta = Model.notificationDelta(before, after, {
+    failedPayments: true,
+    pendingReturns: true,
+    lowStock: false
+  })
+  assert.deepEqual(delta, { failedPayments: 2, pendingReturns: 1, lowStock: 0 })
+  assert.deepEqual(
+    Model.filterNotificationDelta(
+      { failedPayments: 2, pendingReturns: 1, lowStock: 4 },
+      { failedPayments: false, pendingReturns: true, lowStock: false }
+    ),
+    { failedPayments: 0, pendingReturns: 1, lowStock: 0 }
+  )
+  const pending = Model.mergePendingNotifications(
+    { failedPayments: 1, pendingReturns: 0, lowStock: 2 }, delta, after
+  )
+  assert.deepEqual(pending, { failedPayments: 3, pendingReturns: 1, lowStock: 2 })
+  assert.equal(Model.hasPendingNotifications(pending), true)
+  assert.equal(
+    Model.pendingNotificationSummary(pending),
+    '+3 failed payments · +2 low-stock SKUs · +1 pending return'
+  )
+  assert.deepEqual(
+    Model.mergePendingNotifications(pending, {}, { failedPayments: 0, pendingReturns: 1, lowStock: 0 }),
+    { failedPayments: 0, pendingReturns: 1, lowStock: 0 }
+  )
+})
+
+test('loads persisted notification state defensively', () => {
+  assert.deepEqual(Model.parseNotificationState(''), {
+    lastNotificationAt: 0,
+    pending: { failedPayments: 0, pendingReturns: 0, lowStock: 0 }
+  })
+  assert.deepEqual(Model.parseNotificationState('{"lastNotificationAt":500,"pending":{"failedPayments":2}}'), {
+    lastNotificationAt: 500,
+    pending: { failedPayments: 2, pendingReturns: 0, lowStock: 0 }
+  })
+  assert.equal(Model.parseNotificationState('{bad').lastNotificationAt, 0)
+})
+
+test('builds only allowlisted direct MCP lifecycle commands', () => {
+  assert.deepEqual(Model.serviceActionCommand('start'), ['stateset-omarchy', 'service', 'start', '--json'])
+  assert.deepEqual(Model.serviceActionCommand('install'), ['stateset-omarchy', 'service', 'install'])
+  assert.deepEqual(Model.serviceActionCommand('remove'), [])
+  assert.equal(Model.serviceActionLabel('restart', true), 'MCP service restarted')
 })
 
 test('backs off failed polling without exceeding thirty minutes', () => {

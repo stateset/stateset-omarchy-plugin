@@ -56,6 +56,7 @@ jobs:
             --exclude '.github/' \
             --exclude 'CONTRIBUTING.md' \
             --exclude 'ARCHITECTURE.md' \
+            --exclude 'demo/' \
             --exclude 'UPSTREAM.md' \
             --exclude 'patches/' \
             --exclude 'preview.png' \
