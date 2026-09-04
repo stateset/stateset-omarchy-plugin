@@ -11,11 +11,11 @@ version matches `manifest.json`:
 ./scripts/export-to-upstream.sh /path/to/stateset-icommerce
 ```
 
-The exporter also applies `patches/status-schema-v1.patch`, which adds an
-explicit schema version to `stateset-omarchy status --json`, and runs the
-upstream Omarchy integration checker. Review the resulting upstream diff, run
-the upstream CLI unit tests, and submit it through the main repository's normal
-review process.
+The exporter also applies `patches/status-schema-v1.patch`, which adds the
+explicit schema version, exact controller version, and allowlisted capability
+handshake to `stateset-omarchy status --json`, and runs the upstream Omarchy
+integration checker. Review the resulting upstream diff, run the upstream CLI
+unit tests, and submit it through the main repository's normal review process.
 
 `upstream-version.txt` records the exact CLI release used by this plugin. It is
 deliberately separate from the plugin's own semantic version so standalone

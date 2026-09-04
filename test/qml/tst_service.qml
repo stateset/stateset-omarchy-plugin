@@ -3,6 +3,7 @@ import QtTest
 import Quickshell
 import Quickshell.Io
 import "../.."
+import "../../Model.js" as Model
 
 TestCase {
   name: "StateSetService"
@@ -28,6 +29,7 @@ TestCase {
 
   function init() {
     Quickshell.reset()
+    ProcessRegistry.processes = []
     notificationService.doNotDisturb = false
     service = serviceComponent.createObject(this, { shell: shellStub })
     verify(service !== null)
@@ -69,6 +71,8 @@ TestCase {
   function statusJson(alerts) {
     return JSON.stringify({
       schemaVersion: 1,
+      controllerVersion: "1.30.0",
+      capabilities: ["status", "dashboard", "agent", "attention", "remediate", "backup", "doctor", "agent-config", "mcp-service"],
       ok: true,
       configured: true,
       message: "Store ready",
@@ -87,6 +91,9 @@ TestCase {
     completeStatus({ failedPayments: 2 })
     compare(service.ready, true)
     compare(service.hasAlertBaseline, true)
+    compare(service.controllerVersion, "1.30.0")
+    compare(service.capabilitiesKnown, true)
+    verify(service.supportsCapability("backup"))
     compare(Quickshell.detachedCommands.length, 0)
   }
 
@@ -155,6 +162,32 @@ TestCase {
     compare(lifecycleProcess(), null)
     compare(service.runServiceAction("install"), false)
     compare(service.actionError, "Configure a readable store before installing MCP")
+  }
+
+  function test_missing_explicit_capability_disables_mcp_actions() {
+    service.ready = true
+    service.configured = true
+    service.capabilitiesKnown = true
+    service.capabilities = ["status", "backup"]
+    compare(service.runServiceAction("start"), false)
+    compare(lifecycleProcess(), null)
+  }
+
+  function test_fresh_snapshot_restores_data_without_enabling_actions() {
+    var restored = serviceComponent.createObject(this, { shell: shellStub })
+    verify(restored !== null)
+    var now = Date.now()
+    var state = Model.createSnapshotState(JSON.parse(statusJson({ failedPayments: 2 })), now)
+    restored.loadSnapshotState(JSON.stringify(state))
+    compare(restored.hasSnapshot, true)
+    compare(restored.snapshotRestored, true)
+    compare(restored.ready, false)
+    compare(restored.configured, true)
+    compare(restored.counts.orders, 8)
+    compare(restored.alerts.failedPayments, 2)
+    compare(restored.controllerVersion, "1.30.0")
+    compare(restored.runServiceAction("start"), false)
+    restored.destroy()
   }
 
   function test_lifecycle_failure_surfaces_bounded_cli_feedback() {

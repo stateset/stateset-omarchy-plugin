@@ -9,6 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = {"healthy", "attention", "empty", "partial", "governed", "unavailable"}
+CAPABILITIES = [
+    "status", "dashboard", "agent", "attention", "remediate", "backup", "doctor",
+    "agent-config", "mcp-service",
+]
 
 
 def fail(message, code=2):
@@ -54,7 +58,10 @@ def print_status():
         fail("stateset-omarchy: command not found", 127)
     if name not in SCENARIOS:
         fail(f"Unknown demo scenario: {name}")
-    print((ROOT / "fixtures" / f"{name}.json").read_text(), end="")
+    payload = json.loads((ROOT / "fixtures" / f"{name}.json").read_text())
+    payload["controllerVersion"] = "1.30.0"
+    payload["capabilities"] = CAPABILITIES
+    print(json.dumps(payload))
 
 
 def service_action(action, wants_json):

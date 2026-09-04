@@ -70,7 +70,7 @@ check_fixtures() {
   local name result
   for name in healthy attention empty partial governed unavailable; do
     result=$(STATESET_DEMO_SCENARIO="$name" "$repo_root/demo/bin/stateset-omarchy" status --json)
-    python3 -c 'import json,sys; value=json.load(sys.stdin); assert value.get("schemaVersion") == 1' <<<"$result"
+    python3 -c 'import json,sys; value=json.load(sys.stdin); assert value.get("schemaVersion") == 1; assert value.get("controllerVersion") == "1.30.0"; assert "status" in value.get("capabilities", [])' <<<"$result"
   done
   STATESET_DEMO_SCENARIO=controller-missing \
     "$repo_root/demo/bin/stateset-omarchy" status --json >/dev/null 2>&1 && return 1

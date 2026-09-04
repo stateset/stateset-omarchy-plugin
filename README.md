@@ -59,6 +59,9 @@ Backup, `C` for Doctor, `G` for agent configuration, and `M` for the MCP
 service toggle. The panel
 shows all five store totals, database size, current attention items, operating
 mode, data freshness, and the last known snapshot if a refresh temporarily fails.
+The last normalized healthy snapshot is also restored across shell restarts for
+up to 24 hours, always labeled stale with every store action paused until a
+live controller response succeeds.
 If an individual orders, payments, returns, or inventory query fails while the
 store remains reachable, the panel identifies the missing signals instead of
 presenting partial results as fully healthy.
@@ -89,8 +92,11 @@ omarchy-shell com.stateset.icommerce toggle
 `status` returns JSON with readiness, configuration, refresh and stale-state
 flags, controller schema and failure classifications, timestamps, store size,
 counts, alerts, operational-signal health, adaptive-retry timing, and whether
-the MCP lifecycle state is current. It also exposes pending notification counts
-and the latest native MCP action result. Failed status polling backs off from the
+the MCP lifecycle state is current. Newer compatible controllers advertise
+their exact version and an allowlisted capability set; unsupported actions are
+disabled precisely, while legacy schema-v1 controllers remain supported. IPC
+also exposes pending notification counts and the latest native MCP action result.
+Failed status polling backs off from the
 configured interval to a maximum of 30 minutes; a successful refresh returns
 normal scheduling, and manual refresh remains available throughout.
 
