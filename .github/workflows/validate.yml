@@ -20,12 +20,45 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20.20.0'
       - name: Reject symbolic links
         run: test -z "$(find . -type l -print -quit)"
+      - name: Run unit tests
+        run: node --test
+      - name: Check manifest and whitespace
+        run: |
+          node -e "JSON.parse(require('node:fs').readFileSync('manifest.json', 'utf8'))"
+          git diff --check "$(git hash-object -t tree /dev/null)" HEAD
       - name: Validate against pinned Omarchy
         env:
-          OMARCHY_REVISION: 83881e979b35468c3e7d60b171e319ede61a88fd
+          OMARCHY_REVISION: f99d33a8ddee7b36509a71a6d20d5d23355ce8b1
         run: |
           git clone --filter=blob:none https://github.com/basecamp/omarchy.git "$RUNNER_TEMP/omarchy"
           git -C "$RUNNER_TEMP/omarchy" checkout "$OMARCHY_REVISION"
           "$RUNNER_TEMP/omarchy/bin/omarchy-plugin-validate" .
+
+  qml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: archlinux:base
+    steps:
+      - name: Install QML tooling
+        run: pacman -Syu --noconfirm git qt6-declarative
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Parse QML entry points
+        run: |
+          /usr/lib/qt6/bin/qmlformat --ignore-settings -w 2 Panel.qml >/dev/null
+          /usr/lib/qt6/bin/qmlformat --ignore-settings -w 2 Service.qml >/dev/null
+      - name: Run QML static analysis
+        env:
+          OMARCHY_REVISION: f99d33a8ddee7b36509a71a6d20d5d23355ce8b1
+        run: |
+          git clone --filter=blob:none https://github.com/omacom/omarchy.git "$RUNNER_TEMP/omarchy"
+          git -C "$RUNNER_TEMP/omarchy" checkout "$OMARCHY_REVISION"
+          /usr/lib/qt6/bin/qmllint --max-warnings 10000 \
+            --json "$RUNNER_TEMP/qmllint.json" \
+            -I "$RUNNER_TEMP/omarchy/shell" Panel.qml Service.qml
