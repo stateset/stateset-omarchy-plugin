@@ -154,9 +154,18 @@ function normalizeServiceStatus(value) {
   var source = record(value)
   var states = ["active", "activating", "deactivating", "failed", "inactive", "not-installed", "removed", "unknown"]
   var state = typeof source.state === "string" && states.indexOf(source.state) >= 0 ? source.state : "unknown"
+  var installed = source.installed === true
+  if (!installed) {
+    return {
+      installed: false,
+      active: false,
+      state: state === "removed" ? "removed" : "not-installed"
+    }
+  }
+  if (state === "not-installed" || state === "removed") state = "unknown"
   return {
-    installed: source.installed === true,
-    active: source.active === true,
+    installed: true,
+    active: source.active === true && state === "active",
     state: state
   }
 }
@@ -164,7 +173,10 @@ function normalizeServiceStatus(value) {
 function serviceActionCommand(action) {
   var allowed = ["install", "start", "stop", "restart"]
   if (allowed.indexOf(action) < 0) return []
-  var command = ["stateset-omarchy", "service", action]
+  // Keep a stable executable boundary if the controller disappears after its
+  // last successful probe. `timeout` exits 127 instead of stranding the UI.
+  var command = ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1s", "10s",
+    "stateset-omarchy", "service", action]
   if (action !== "install") command.push("--json")
   return command
 }
@@ -358,6 +370,7 @@ function parseNotificationState(text) {
   if (text.length > MAX_ERROR_CHARS) return fallback
   try {
     var source = record(JSON.parse(text))
+    if (source.version !== undefined && source.version !== 1) return fallback
     var last = Number(source.lastNotificationAt)
     return {
       lastNotificationAt: isFinite(last) && last > 0 ? last : 0,
@@ -384,7 +397,11 @@ function cooldownRemainingMs(lastNotificationAt, now, cooldownMinutes) {
   var last = Number(lastNotificationAt)
   var current = Number(now)
   var minutes = Math.max(1, Math.min(240, Number(cooldownMinutes) || 15))
-  return Math.max(0, Math.ceil(last + minutes * 60000 - current))
+  if (!isFinite(last) || !isFinite(current) || last <= 0) return 0
+  // Bound corrupt or clock-skewed future timestamps to one cooldown so they
+  // cannot overflow a QML Timer or suppress notifications indefinitely.
+  var elapsed = Math.max(0, current - last)
+  return Math.max(0, Math.ceil(minutes * 60000 - elapsed))
 }
 
 function retryIntervalSeconds(baseInterval, consecutiveFailures) {

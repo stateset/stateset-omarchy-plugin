@@ -30,12 +30,15 @@ panel loadable while a service is starting, without fabricating readiness.
 - Commerce changes stay preview-only unless the separately installed
   controller has governed apply configured by the operator.
 - Desktop notifications are derived only from normalized numeric deltas. They
-  are coalesced and persisted under XDG state, honor Omarchy Do Not Disturb and
-  per-signal settings, and deliver after the configured cooldown.
+  are coalesced and persisted in a user-only XDG state directory, honor Omarchy
+  Do Not Disturb and per-signal settings, and deliver after the configured
+  cooldown. Persisted versions and timestamps are bounded before scheduling.
 - Controller schema versions fail closed when newer than this plugin supports.
 - MCP lifecycle mutations use a direct allowlisted process with bounded output,
-  a deadline, inline results, and confirmation for stop/restart. Interactive
-  commerce workflows and logs remain visible in a terminal.
+  a stable timeout boundary, bounded output, inline results, and confirmation
+  for stop/restart. Contradictory service responses fail closed. Interactive
+  commerce workflows and logs remain visible in a terminal, including during
+  controller recovery.
 
 ## Ownership and releases
 

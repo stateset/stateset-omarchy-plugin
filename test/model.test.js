@@ -61,6 +61,16 @@ test('normalizes MCP service status', () => {
     active: false,
     state: 'unknown'
   })
+  assert.deepEqual(Model.parseServiceStatusJson('{"installed":false,"active":true,"state":"active"}'), {
+    installed: false,
+    active: false,
+    state: 'not-installed'
+  })
+  assert.deepEqual(Model.parseServiceStatusJson('{"installed":true,"active":true,"state":"failed"}'), {
+    installed: true,
+    active: false,
+    state: 'failed'
+  })
 })
 
 test('classifies controller failures for tailored recovery', () => {
@@ -145,6 +155,7 @@ test('applies per-signal notification policy and cooldowns', () => {
   assert.equal(Model.cooldownElapsed(1000, 1000 + 14 * 60000, 15), false)
   assert.equal(Model.cooldownElapsed(1000, 1000 + 15 * 60000, 15), true)
   assert.equal(Model.cooldownRemainingMs(1000, 1000 + 14 * 60000, 15), 60000)
+  assert.equal(Model.cooldownRemainingMs(9999999999999, 1000, 15), 15 * 60000)
 })
 
 test('coalesces exceptional alerts until they can be delivered', () => {
@@ -188,11 +199,18 @@ test('loads persisted notification state defensively', () => {
     pending: { failedPayments: 2, pendingReturns: 0, lowStock: 0 }
   })
   assert.equal(Model.parseNotificationState('{bad').lastNotificationAt, 0)
+  assert.equal(Model.parseNotificationState('{"version":2,"lastNotificationAt":500}').lastNotificationAt, 0)
 })
 
 test('builds only allowlisted direct MCP lifecycle commands', () => {
-  assert.deepEqual(Model.serviceActionCommand('start'), ['stateset-omarchy', 'service', 'start', '--json'])
-  assert.deepEqual(Model.serviceActionCommand('install'), ['stateset-omarchy', 'service', 'install'])
+  assert.deepEqual(Model.serviceActionCommand('start'), [
+    '/usr/bin/timeout', '--signal=TERM', '--kill-after=1s', '10s',
+    'stateset-omarchy', 'service', 'start', '--json'
+  ])
+  assert.deepEqual(Model.serviceActionCommand('install'), [
+    '/usr/bin/timeout', '--signal=TERM', '--kill-after=1s', '10s',
+    'stateset-omarchy', 'service', 'install'
+  ])
   assert.deepEqual(Model.serviceActionCommand('remove'), [])
   assert.equal(Model.serviceActionLabel('restart', true), 'MCP service restarted')
 })
