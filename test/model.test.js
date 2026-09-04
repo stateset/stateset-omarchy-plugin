@@ -98,6 +98,8 @@ test('formats large metric counts for a narrow panel', () => {
   assert.equal(Model.formatCount(999999), '999K')
   assert.equal(Model.formatCount(1250000), '1.2M')
   assert.equal(Model.formatCount(999999999), '999M')
+  assert.equal(Model.formatExactCount(0), '0')
+  assert.equal(Model.formatExactCount(1250000), '1,250,000')
 })
 
 test('formats bounded store sizes', () => {
@@ -142,6 +144,23 @@ test('applies per-signal notification policy and cooldowns', () => {
   assert.equal(Model.cooldownElapsed(0, 1000, 15), true)
   assert.equal(Model.cooldownElapsed(1000, 1000 + 14 * 60000, 15), false)
   assert.equal(Model.cooldownElapsed(1000, 1000 + 15 * 60000, 15), true)
+})
+
+test('backs off failed polling without exceeding thirty minutes', () => {
+  assert.equal(Model.retryIntervalSeconds(120, 0), 120)
+  assert.equal(Model.retryIntervalSeconds(120, 1), 120)
+  assert.equal(Model.retryIntervalSeconds(120, 2), 240)
+  assert.equal(Model.retryIntervalSeconds(120, 5), 1800)
+  assert.equal(Model.retryIntervalSeconds(1, 2), 60)
+  assert.equal(Model.retryIntervalSeconds(3600, 4), 1800)
+})
+
+test('formats the next retry as a short countdown', () => {
+  const now = new Date('2026-09-04T12:00:00Z')
+  assert.equal(Model.retryCountdownLabel(new Date(0), now), '')
+  assert.equal(Model.retryCountdownLabel(new Date('2026-09-04T12:00:01Z'), now), 'Retrying now')
+  assert.equal(Model.retryCountdownLabel(new Date('2026-09-04T12:00:42Z'), now), 'Retrying in 42s')
+  assert.equal(Model.retryCountdownLabel(new Date('2026-09-04T12:02:01Z'), now), 'Retrying in 3m')
 })
 
 test('builds a readable attention summary with singular forms', () => {

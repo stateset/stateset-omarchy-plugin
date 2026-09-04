@@ -9,7 +9,8 @@ controller boundary.
    fixed, time-limited command and caps output before it reaches QML.
 2. `Model.js` validates the JSON envelope, accepts the current status schema
    (plus legacy unversioned responses), normalizes every displayed field, and
-   classifies failures.
+   classifies failures. Repeated failures use bounded exponential backoff while
+   preserving immediate operator-triggered refreshes.
 3. `Panel.qml` renders the shared service snapshot. It can retain stale data for
    context, but never reports stale data as healthy or enables store actions.
 4. Operator actions resolve through an exact action-to-command map and open in
@@ -24,6 +25,8 @@ panel loadable while a service is starting, without fabricating readiness.
 - The plugin does not open the commerce database or read provider credentials.
 - Status and MCP lifecycle probes have fixed commands, deadlines, and output
   limits. Parsed strings and counts are sanitized and bounded.
+- MCP lifecycle actions remain unavailable until a successful status probe, so
+  stale or unknown service state cannot select the wrong operation.
 - Commerce changes stay preview-only unless the separately installed
   controller has governed apply configured by the operator.
 - Desktop notifications are derived only from normalized numeric deltas. They

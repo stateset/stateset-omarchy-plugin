@@ -43,5 +43,9 @@ runtime package downloads, dynamic shell fragments, credentials, database
 writes, or model-provided command arguments. Operator actions must remain in
 the explicit command allowlist and open visibly in a terminal.
 
+Keep scheduling and lifecycle decisions in pure `Model.js` helpers where
+possible. IPC must distinguish unknown, stale, and current state rather than
+coercing probe failures into apparently valid values.
+
 Any new setting belongs in both `barWidget.defaults` and `barWidget.schema`.
 Add focused model or security regression tests for every behavior change.

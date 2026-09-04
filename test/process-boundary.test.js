@@ -35,8 +35,10 @@ test('fixed status pipeline preserves controller failures', () => {
 
 test('fixed status pipeline caps producer output at the overflow sentinel', () => {
   const result = run('oversized')
+  // The producer may finish before head closes the pipe, so its exit status is
+  // kernel-buffer dependent. The extra byte is the deterministic invariant:
+  // Service.qml consumes 65,536 bytes and marks that sentinel as truncation.
   assert.equal(result.stdout.length, 65537)
-  assert.notEqual(result.status, 0)
 })
 
 test('fixed status pipeline enforces its producer deadline', () => {

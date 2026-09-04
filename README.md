@@ -55,7 +55,8 @@ Left-click the bar icon to open the operations panel. Right- or middle-click it
 to refresh immediately; with the panel open, press `R` to do the same. Use the
 arrow keys or `H`/`J`/`K`/`L` to move through actions and `Enter` or `Space` to
 activate one. Direct shortcuts are `D` for Dashboard, `A` for Agent, `B` for
-Backup, `C` for Doctor, and `M` for the MCP service toggle. The panel
+Backup, `C` for Doctor, `G` for agent configuration, and `M` for the MCP
+service toggle. The panel
 shows all five store totals, database size, current attention items, operating
 mode, data freshness, and the last known snapshot if a refresh temporarily fails.
 If an individual orders, payments, returns, or inventory query fails while the
@@ -83,7 +84,10 @@ omarchy-shell com.stateset.icommerce toggle
 
 `status` returns JSON with readiness, configuration, refresh and stale-state
 flags, controller schema and failure classifications, timestamps, store size,
-counts, alerts, operational-signal health, and MCP lifecycle state.
+counts, alerts, operational-signal health, adaptive-retry timing, and whether
+the MCP lifecycle state is current. Failed status polling backs off from the
+configured interval to a maximum of 30 minutes; a successful refresh returns
+normal scheduling, and manual refresh remains available throughout.
 
 The QML plugin runs only `stateset-omarchy status --json` and explicit commands
 selected by the operator. It does not read credentials, edit the commerce

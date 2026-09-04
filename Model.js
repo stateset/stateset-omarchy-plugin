@@ -209,6 +209,10 @@ function formatCount(value) {
   return Math.floor(count / 1000000) + "M"
 }
 
+function formatExactCount(value) {
+  return String(boundedCount(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+}
+
 function formatBytes(value) {
   var bytes = boundedBytes(value)
   if (bytes < 1024) return bytes + " B"
@@ -284,6 +288,27 @@ function cooldownElapsed(lastNotificationAt, now, cooldownMinutes) {
   return current - last >= minutes * 60000
 }
 
+function retryIntervalSeconds(baseInterval, consecutiveFailures) {
+  var base = Number(baseInterval)
+  var failures = Number(consecutiveFailures)
+  if (!isFinite(base)) base = 120
+  if (!isFinite(failures) || failures < 1) failures = 0
+  base = Math.max(30, Math.min(1800, Math.floor(base)))
+  var exponent = Math.max(0, Math.min(4, Math.floor(failures) - 1))
+  return Math.min(1800, base * Math.pow(2, exponent))
+}
+
+function retryCountdownLabel(value, now) {
+  var timestamp = value instanceof Date ? value.getTime() : Number(value)
+  var current = now instanceof Date ? now.getTime() : Number(now)
+  if (!isFinite(timestamp) || timestamp <= 0) return ""
+  if (!isFinite(current)) current = Date.now()
+  var seconds = Math.max(0, Math.ceil((timestamp - current) / 1000))
+  if (seconds <= 1) return "Retrying now"
+  if (seconds < 60) return "Retrying in " + seconds + "s"
+  return "Retrying in " + Math.ceil(seconds / 60) + "m"
+}
+
 function notificationSummary(previous, next) {
   var before = normalizeAlerts(previous)
   var after = normalizeAlerts(next)
@@ -305,6 +330,7 @@ if (typeof module !== "undefined") {
     appendBounded: appendBounded,
     formatBytes: formatBytes,
     formatCount: formatCount,
+    formatExactCount: formatExactCount,
     freshnessLabel: freshnessLabel,
     normalizeAlerts: normalizeAlerts,
     normalizeCounts: normalizeCounts,
@@ -320,6 +346,8 @@ if (typeof module !== "undefined") {
     cooldownElapsed: cooldownElapsed,
     notificationCandidate: notificationCandidate,
     notificationSummary: notificationSummary,
+    retryIntervalSeconds: retryIntervalSeconds,
+    retryCountdownLabel: retryCountdownLabel,
     shouldNotify: shouldNotify
   }
 }

@@ -35,7 +35,16 @@ test('IPC exposes standard panel aliases and explicit stale-state metadata', () 
   assert.match(panel, /stale: !service\.ready && service\.hasSnapshot/)
   assert.match(panel, /signalsComplete: service\.signalsComplete/)
   assert.match(panel, /statusSchemaVersion: service\.statusSchemaVersion/)
-  assert.match(panel, /mcp: \{ installed: service\.mcpInstalled/)
+  assert.match(panel, /installed: service\.mcpInstalled/)
+  assert.match(panel, /known: service\.mcpStatusKnown/)
+  assert.match(panel, /effectiveRefreshIntervalSec: Model\.retryIntervalSeconds/)
+})
+
+test('failed polling backs off and unknown MCP state cannot trigger a lifecycle command', () => {
+  assert.match(service, /consecutiveFailures \+= 1/)
+  assert.match(service, /Model\.retryIntervalSeconds\(refreshIntervalSec, consecutiveFailures\)/)
+  assert.match(panel, /if \(!service\.mcpStatusKnown\) service\.refreshService\(\)/)
+  assert.match(panel, /root\.operational && !service\.mcpRefreshing/)
 })
 
 test('panel provides scrolling and keyboard-driven action navigation', () => {
@@ -43,4 +52,7 @@ test('panel provides scrolling and keyboard-driven action navigation', () => {
   assert.match(panel, /ScrollBar\.vertical: ScrollBar/)
   assert.match(panel, /onMoveRequested: function\(dx, dy\)/)
   assert.match(panel, /onActivateRequested: root\.activateCursor\(\)/)
+  assert.match(panel, /root\.launch\("doctor"\)/)
+  assert.match(panel, /root\.launch\("configureAgents"\)/)
+  assert.match(panel, /text === "g" \|\| text === "G"/)
 })
