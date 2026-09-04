@@ -56,6 +56,36 @@ test('demo MCP lifecycle state survives separate commands', () => {
   }
 })
 
+test('native MCP action boundary executes the controller and exits if it disappears', () => {
+  const stateDir = mkdtempSync(path.join(tmpdir(), 'stateset-demo-action-'))
+  const emptyPath = mkdtempSync(path.join(tmpdir(), 'stateset-empty-path-'))
+  const command = Model.serviceActionCommand('stop')
+  try {
+    const success = spawnSync(command[0], command.slice(1), {
+      encoding: 'utf8',
+      timeout: 2000,
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(cli)}:${process.env.PATH}`,
+        STATESET_DEMO_STATE_DIR: stateDir
+      }
+    })
+    assert.equal(success.status, 0, success.stderr)
+    assert.equal(Model.parseServiceStatusJson(success.stdout).active, false)
+
+    const missing = spawnSync(command[0], command.slice(1), {
+      encoding: 'utf8',
+      timeout: 2000,
+      env: { ...process.env, PATH: emptyPath }
+    })
+    assert.equal(missing.status, 127)
+    assert.match(missing.stderr, /failed to run command/)
+  } finally {
+    rmSync(stateDir, { recursive: true, force: true })
+    rmSync(emptyPath, { recursive: true, force: true })
+  }
+})
+
 test('demo controller rejects commands outside the plugin contract', () => {
   const result = run(['service', 'remove'], 'healthy', tmpdir())
   assert.notEqual(result.status, 0)

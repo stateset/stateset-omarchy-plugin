@@ -58,14 +58,22 @@ test('MCP lifecycle actions use a bounded direct process instead of a shell', ()
   assert.match(service, /Model\.serviceActionCommand\(action\)/)
   assert.match(service, /serviceActionProcess\.command = command/)
   assert.match(service, /actionDeadline/)
+  assert.match(service, /actionClearTimer\.stop\(\)/)
   assert.match(service, /Model\.MAX_ERROR_CHARS/)
   assert.doesNotMatch(panel, /serviceStart:|serviceStop:|serviceRestart:|serviceInstall:/)
   assert.match(panel, /confirmationAction === "stop"/)
   assert.match(panel, /confirmationAction === "restart"/)
 })
 
+test('MCP logs stay visible for recovery while mutations remain gated', () => {
+  assert.match(panel, /visible: service\.mcpStatusKnown && service\.mcpInstalled/)
+  assert.match(panel, /enabled: root\.operational && !service\.mcpRefreshing && !service\.actionRunning/)
+  assert.match(panel, /if \(service\.mcpStatusKnown && service\.mcpInstalled\) indexes\.push\(9\)/)
+})
+
 test('notification deltas are persisted and delivered after quiet mode', () => {
   assert.match(service, /notificationStatePath/)
+  assert.match(service, /"\/usr\/bin\/install", "-d", "-m", "700"/)
   assert.match(service, /atomicWrites: true/)
   assert.match(service, /Model\.mergePendingNotifications/)
   assert.match(service, /onDoNotDisturbChanged/)

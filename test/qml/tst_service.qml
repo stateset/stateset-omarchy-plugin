@@ -58,10 +58,11 @@ TestCase {
 
   function lifecycleProcess() {
     return findProcess(function(process) {
-      return process.command.length >= 3
-        && process.command[0] === "stateset-omarchy"
-        && process.command[1] === "service"
-        && process.command[2] !== "status"
+      return process.command.length >= 7
+        && process.command[0] === "/usr/bin/timeout"
+        && process.command[4] === "stateset-omarchy"
+        && process.command[5] === "service"
+        && process.command[6] !== "status"
     })
   }
 
@@ -138,7 +139,10 @@ TestCase {
     verify(service.runServiceAction("start"))
     var process = lifecycleProcess()
     verify(process !== null)
-    compare(process.command, ["stateset-omarchy", "service", "start", "--json"])
+    compare(process.command, [
+      "/usr/bin/timeout", "--signal=TERM", "--kill-after=1s", "10s",
+      "stateset-omarchy", "service", "start", "--json"
+    ])
     process.complete(0, '{"installed":true,"active":true,"state":"active"}', "")
     compare(service.actionRunning, false)
     compare(service.actionStatus, "MCP service started")
@@ -163,5 +167,27 @@ TestCase {
     compare(service.actionRunning, false)
     compare(service.actionError, "Permission denied")
     compare(service.actionStatus, "Permission denied")
+  }
+
+  function test_missing_controller_finishes_lifecycle_action() {
+    service.ready = true
+    service.configured = true
+    verify(service.runServiceAction("start"))
+    var process = lifecycleProcess()
+    verify(process !== null)
+    process.complete(127, "", "stateset-omarchy: command not found")
+    compare(service.actionRunning, false)
+    compare(service.actionError, "stateset-omarchy: command not found")
+  }
+
+  function test_lifecycle_timeout_has_specific_feedback() {
+    service.ready = true
+    service.configured = true
+    verify(service.runServiceAction("restart"))
+    var process = lifecycleProcess()
+    verify(process !== null)
+    process.complete(124, "", "")
+    compare(service.actionRunning, false)
+    compare(service.actionError, "MCP service action timed out")
   }
 }

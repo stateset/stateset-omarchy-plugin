@@ -238,6 +238,7 @@ Item {
       actionClearTimer.restart()
       return false
     }
+    actionClearTimer.stop()
     actionKind = action
     actionStatus = action.charAt(0).toUpperCase() + action.slice(1) + "ing MCP service…"
     if (action === "stop") actionStatus = "Stopping MCP service…"
@@ -261,7 +262,8 @@ Item {
     actionDeadline.stop()
     actionKillDeadline.stop()
     actionRunning = false
-    var success = exitCode === 0 && !_actionTimedOut && !_actionTruncated
+    var timedOut = _actionTimedOut || exitCode === 124
+    var success = exitCode === 0 && !timedOut && !_actionTruncated
     if (success && actionKind !== "install") {
       try {
         var status = Model.parseServiceStatusJson(_actionOutput)
@@ -279,7 +281,7 @@ Item {
       actionError = ""
       actionRefreshTimer.restart()
     } else {
-      actionError = _actionTimedOut ? "MCP service action timed out"
+      actionError = timedOut ? "MCP service action timed out"
         : _actionTruncated ? "MCP service action returned too much output"
         : Model.safeText(_actionOutput, 200, Model.serviceActionLabel(actionKind, false))
       actionStatus = actionError
@@ -383,6 +385,7 @@ Item {
     onTriggered: {
       root.actionStatus = ""
       root.actionError = ""
+      if (!root.actionRunning) root.actionKind = ""
     }
   }
 
@@ -425,7 +428,7 @@ Item {
 
   Process {
     id: notificationStateDirProcess
-    command: ["/usr/bin/mkdir", "-p", root.notificationStateDir]
+    command: ["/usr/bin/install", "-d", "-m", "700", root.notificationStateDir]
     running: true
     onExited: function(exitCode) {
       if (exitCode === 0) notificationStateFile.reload()

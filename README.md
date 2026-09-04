@@ -101,9 +101,11 @@ database, or accept model-supplied shell commands.
 The optional loopback MCP service supports explicit `status`, `start`, `stop`,
 `restart`, and `remove` lifecycle actions through `stateset-omarchy service`.
 Install, start, stop, and restart run as bounded direct processes and report
-their result in the panel; stop and restart require a second confirmation.
+their result in the panel; a fixed timeout prevents a vanished controller from
+stranding an action, and stop and restart require a second confirmation.
 The panel can also open the latest 100 lines from the fixed user-service journal
-in a visible terminal; it does not stream logs into the shell process.
+in a visible terminal, even while controller recovery is in progress; it does
+not stream logs into the shell process.
 Use `stateset-omarchy attention` for a sanitized, provider-free operations
 report, `stateset-omarchy remediate` to open the matching preview-only
 specialist, and `stateset-omarchy doctor` to verify a target desktop installation.

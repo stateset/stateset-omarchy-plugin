@@ -772,7 +772,7 @@ Panel {
         }
 
         RowLayout {
-          visible: service.ready && service.mcpStatusKnown && service.mcpInstalled
+          visible: service.mcpStatusKnown && service.mcpInstalled
           Layout.fillWidth: true
           spacing: Style.space(8)
           Button {
