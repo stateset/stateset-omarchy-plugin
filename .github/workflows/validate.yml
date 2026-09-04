@@ -30,7 +30,10 @@ jobs:
       - name: Check manifest and whitespace
         run: |
           node -e "JSON.parse(require('node:fs').readFileSync('manifest.json', 'utf8'))"
-          git diff --check "$(git hash-object -t tree /dev/null)" HEAD
+          if git grep -nI -E '[[:blank:]]+$' -- .; then
+            echo "Trailing whitespace found" >&2
+            exit 1
+          fi
       - name: Validate against pinned Omarchy
         env:
           OMARCHY_REVISION: f99d33a8ddee7b36509a71a6d20d5d23355ce8b1
