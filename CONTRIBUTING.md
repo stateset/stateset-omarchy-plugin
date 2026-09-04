@@ -20,12 +20,14 @@ Use Node.js 20.20 or newer and an Omarchy Quattro installation:
 
 ```bash
 node --test
+./demo/run --check
 omarchy plugin validate .
 git diff --check
 ```
 
-CI additionally parses both QML entry points with Qt 6's `qmlformat` and runs
-`qmllint` against a pinned Omarchy checkout. `test/process-boundary.test.js`
+CI additionally parses both QML entry points with Qt 6's `qmlformat`, runs the
+analyzable `qmllint` diagnostics with a zero-warning budget, and instantiates
+`Service.qml` under `qmltestrunner`. `test/process-boundary.test.js`
 executes the real timeout/head pipeline against a deterministic fixture; keep
 that test aligned with any polling-command change.
 

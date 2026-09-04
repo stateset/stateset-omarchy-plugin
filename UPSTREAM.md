@@ -24,6 +24,10 @@ updates both the generated runtime and this compatibility marker together. The
 exporter rewrites only the copied upstream manifest version to that CLI release,
 as required by the upstream packaging invariant.
 
+The deterministic `demo/` harness is copied upstream with the runtime so CLI
+release packaging can reproduce the same fictional states and screenshots.
+Repository-only Node and QML test infrastructure remains owned by this mirror.
+
 Do not release a later CLI version until the preserved mirror tests pass against
 its generated plugin. This prevents release synchronization from silently
 dropping security or operator-experience improvements.

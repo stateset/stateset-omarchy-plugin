@@ -74,6 +74,10 @@ The bar-widget settings control polling (30–1,800 seconds), desktop
 notifications, a 1–240 minute notification cooldown, and which exceptional
 signals may notify. Notifications honor Omarchy's Do Not Disturb state, never
 fire on the first snapshot, and do not alert for routine pending-order growth.
+Suppressed increases are coalesced in XDG state, reconciled against the next
+healthy snapshot, and delivered when Do Not Disturb and the cooldown permit.
+Interactive controls expose accessible roles, names, descriptions, and press
+actions in addition to full keyboard navigation.
 The IPC surface is also scriptable:
 
 ```bash
@@ -85,7 +89,8 @@ omarchy-shell com.stateset.icommerce toggle
 `status` returns JSON with readiness, configuration, refresh and stale-state
 flags, controller schema and failure classifications, timestamps, store size,
 counts, alerts, operational-signal health, adaptive-retry timing, and whether
-the MCP lifecycle state is current. Failed status polling backs off from the
+the MCP lifecycle state is current. It also exposes pending notification counts
+and the latest native MCP action result. Failed status polling backs off from the
 configured interval to a maximum of 30 minutes; a successful refresh returns
 normal scheduling, and manual refresh remains available throughout.
 
@@ -95,6 +100,8 @@ database, or accept model-supplied shell commands.
 
 The optional loopback MCP service supports explicit `status`, `start`, `stop`,
 `restart`, and `remove` lifecycle actions through `stateset-omarchy service`.
+Install, start, stop, and restart run as bounded direct processes and report
+their result in the panel; stop and restart require a second confirmation.
 The panel can also open the latest 100 lines from the fixed user-service journal
 in a visible terminal; it does not stream logs into the shell process.
 Use `stateset-omarchy attention` for a sanitized, provider-free operations
@@ -152,11 +159,35 @@ omarchy plugin validate .
 git diff --check
 ```
 
-Pure status parsing, sanitization, bounds, notification policy, compact metrics,
-freshness labels, and service lookup are covered by the local test suite. The CI
-workflow also validates every change against a pinned Omarchy revision and
-parses/static-checks both QML entry points in an Arch Linux container. Runtime
+Pure status parsing, sanitization, bounds, durable notification policy, compact
+metrics, freshness labels, and service lookup are covered by the local test
+suite. Qt runtime tests instantiate the service and exercise DND delivery and
+native MCP actions. The CI workflow also validates every change against a
+pinned Omarchy revision and parses/static-checks both QML entry points with a
+zero-warning budget for every diagnostic independent of external Quickshell
+type metadata. Runtime
 QML is generated from the upstream directory; repository-only tests, preview
 assets, handoff material, and workflows are preserved across release
 synchronization. See [ARCHITECTURE.md](ARCHITECTURE.md) for the runtime trust
 boundaries and [UPSTREAM.md](UPSTREAM.md) for the upstream handoff workflow.
+
+### Deterministic demo
+
+Validate every fictional controller fixture without touching the desktop:
+
+```bash
+./demo/run --check
+```
+
+On an Omarchy desktop, launch the current checkout against isolated fictional
+data with `./demo/run attention`. Other states include `healthy`, `empty`,
+`partial`, `governed`, `unavailable`, `controller-missing`, `timeout`, and
+`oversized`. Capture the real bar and panel with:
+
+```bash
+./demo/run attention --screenshot --output ~/Pictures/stateset-demo.png
+```
+
+The harness backs up the installed plugin and shell configuration, uses a
+temporary XDG state directory, intercepts every StateSet command, and restores
+the original session on exit.

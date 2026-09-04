@@ -4,6 +4,7 @@ const fs = require('node:fs')
 
 const service = fs.readFileSync('Service.qml', 'utf8')
 const panel = fs.readFileSync('Panel.qml', 'utf8')
+const validationWorkflow = fs.readFileSync('.github/workflows/validate.yml', 'utf8')
 
 test('status polling has a fixed command boundary and bounded streams', () => {
   assert.match(service, /command: \["\/usr\/bin\/bash", "-c", "set -o pipefail; \{ \/usr\/bin\/timeout --signal=TERM --kill-after=1s 8s stateset-omarchy status --json; \} 2>&1 \| \/usr\/bin\/head -c 65537"\]/)
@@ -14,16 +15,15 @@ test('status polling has a fixed command boundary and bounded streams', () => {
 
 test('notifications use a fixed executable, policy controls, and Omarchy quiet mode', () => {
   assert.match(service, /"\/usr\/bin\/notify-send"/)
-  assert.match(service, /Model\.notificationSummary\(alerts, notificationAlerts\)/)
+  assert.match(service, /Model\.pendingNotificationSummary\(pending\)/)
   assert.match(service, /firstPartyServiceFor\("omarchy\.notifications"\)/)
-  assert.match(service, /!notificationsQuiet/)
-  assert.match(service, /Model\.cooldownElapsed/)
+  assert.match(service, /notificationsQuiet/)
+  assert.match(service, /Model\.cooldownRemainingMs/)
 })
 
 test('operator commands remain behind an exact action map', () => {
   assert.match(panel, /actionCommands: \(\{/)
   assert.match(panel, /dashboard: "stateset-omarchy dashboard"/)
-  assert.match(panel, /serviceRestart: "stateset-omarchy service restart"/)
   assert.match(panel, /serviceLogs: "\/usr\/bin\/journalctl --user -u stateset-icommerce-mcp\.service -n 100 --no-pager"/)
   assert.match(panel, /typeof controller !== "string"/)
   assert.doesNotMatch(panel, /\bnpx\b|curl|wget/)
@@ -38,6 +38,13 @@ test('IPC exposes standard panel aliases and explicit stale-state metadata', () 
   assert.match(panel, /installed: service\.mcpInstalled/)
   assert.match(panel, /known: service\.mcpStatusKnown/)
   assert.match(panel, /effectiveRefreshIntervalSec: Model\.retryIntervalSeconds/)
+  assert.match(panel, /notifications: \{ pending: Model\.normalizeNotificationDelta/)
+})
+
+test('QML analysis fails on every locally analyzable warning', () => {
+  assert.match(validationWorkflow, /qmllint --max-warnings 0/)
+  assert.doesNotMatch(validationWorkflow, /--max-warnings 10000/)
+  assert.match(validationWorkflow, /qmltestrunner/)
 })
 
 test('failed polling backs off and unknown MCP state cannot trigger a lifecycle command', () => {
@@ -45,6 +52,31 @@ test('failed polling backs off and unknown MCP state cannot trigger a lifecycle 
   assert.match(service, /Model\.retryIntervalSeconds\(refreshIntervalSec, consecutiveFailures\)/)
   assert.match(panel, /if \(!service\.mcpStatusKnown\) service\.refreshService\(\)/)
   assert.match(panel, /root\.operational && !service\.mcpRefreshing/)
+})
+
+test('MCP lifecycle actions use a bounded direct process instead of a shell', () => {
+  assert.match(service, /Model\.serviceActionCommand\(action\)/)
+  assert.match(service, /serviceActionProcess\.command = command/)
+  assert.match(service, /actionDeadline/)
+  assert.match(service, /Model\.MAX_ERROR_CHARS/)
+  assert.doesNotMatch(panel, /serviceStart:|serviceStop:|serviceRestart:|serviceInstall:/)
+  assert.match(panel, /confirmationAction === "stop"/)
+  assert.match(panel, /confirmationAction === "restart"/)
+})
+
+test('notification deltas are persisted and delivered after quiet mode', () => {
+  assert.match(service, /notificationStatePath/)
+  assert.match(service, /atomicWrites: true/)
+  assert.match(service, /Model\.mergePendingNotifications/)
+  assert.match(service, /onDoNotDisturbChanged/)
+})
+
+test('interactive controls expose accessibility roles, names, and press actions', () => {
+  assert.match(panel, /Accessible\.role: Accessible\.Button/)
+  assert.match(panel, /Accessible\.role: Accessible\.StaticText/)
+  assert.match(panel, /Accessible\.name:/)
+  assert.match(panel, /Accessible\.description:/)
+  assert.match(panel, /Accessible\.onPressAction:/)
 })
 
 test('panel provides scrolling and keyboard-driven action navigation', () => {

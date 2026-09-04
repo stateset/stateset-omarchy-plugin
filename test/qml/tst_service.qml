@@ -1,0 +1,167 @@
+import QtQuick
+import QtTest
+import Quickshell
+import Quickshell.Io
+import "../.."
+
+TestCase {
+  name: "StateSetService"
+
+  property var service: null
+
+  QtObject {
+    id: notificationService
+    property bool doNotDisturb: false
+  }
+
+  QtObject {
+    id: shellStub
+    function firstPartyServiceFor(pluginId) {
+      return pluginId === "omarchy.notifications" ? notificationService : null
+    }
+  }
+
+  Component {
+    id: serviceComponent
+    Service {}
+  }
+
+  function init() {
+    Quickshell.reset()
+    notificationService.doNotDisturb = false
+    service = serviceComponent.createObject(this, { shell: shellStub })
+    verify(service !== null)
+    service.loadNotificationState("")
+  }
+
+  function cleanup() {
+    service.destroy()
+    service = null
+  }
+
+  function findProcess(predicate) {
+    for (var index = 0; index < ProcessRegistry.processes.length; index += 1) {
+      var process = ProcessRegistry.processes[index]
+      if (predicate(process)) return process
+    }
+    return null
+  }
+
+  function statusProcess() {
+    return findProcess(function(process) {
+      return process.command.length >= 3
+        && process.command[0] === "/usr/bin/bash"
+        && String(process.command[2]).indexOf(" status --json") >= 0
+        && String(process.command[2]).indexOf(" service status") < 0
+    })
+  }
+
+  function lifecycleProcess() {
+    return findProcess(function(process) {
+      return process.command.length >= 3
+        && process.command[0] === "stateset-omarchy"
+        && process.command[1] === "service"
+        && process.command[2] !== "status"
+    })
+  }
+
+  function statusJson(alerts) {
+    return JSON.stringify({
+      schemaVersion: 1,
+      ok: true,
+      configured: true,
+      message: "Store ready",
+      counts: { orders: 8, customers: 4, products: 6, returns: 1, payments: 7 },
+      alerts: alerts || {}
+    })
+  }
+
+  function completeStatus(alerts) {
+    var process = statusProcess()
+    verify(process !== null)
+    process.complete(0, statusJson(alerts), "")
+  }
+
+  function test_first_snapshot_establishes_baseline_without_notification() {
+    completeStatus({ failedPayments: 2 })
+    compare(service.ready, true)
+    compare(service.hasAlertBaseline, true)
+    compare(Quickshell.detachedCommands.length, 0)
+  }
+
+  function test_dnd_queues_and_later_delivers_a_coalesced_notification() {
+    completeStatus({ failedPayments: 1 })
+    notificationService.doNotDisturb = true
+    service.refresh()
+    completeStatus({ failedPayments: 3, lowStock: 2 })
+    compare(service.pendingNotifications.failedPayments, 2)
+    compare(service.pendingNotifications.lowStock, 2)
+    compare(Quickshell.detachedCommands.length, 0)
+
+    notificationService.doNotDisturb = false
+    compare(Quickshell.detachedCommands.length, 1)
+    verify(String(Quickshell.detachedCommands[0][6]).indexOf("+2 failed payments") >= 0)
+    compare(service.pendingNotifications.failedPayments, 0)
+  }
+
+  function test_persisted_notification_is_reconciled_before_delivery() {
+    service.pendingNotifications = { failedPayments: 4, pendingReturns: 0, lowStock: 0 }
+    service.notificationSnapshotReady = false
+    service.deliverPendingNotifications()
+    compare(Quickshell.detachedCommands.length, 0)
+
+    completeStatus({ failedPayments: 0 })
+    compare(service.pendingNotifications.failedPayments, 0)
+    compare(Quickshell.detachedCommands.length, 0)
+  }
+
+  function test_disabled_signal_is_removed_before_delayed_delivery() {
+    completeStatus({ failedPayments: 1 })
+    notificationService.doNotDisturb = true
+    service.refresh()
+    completeStatus({ failedPayments: 3, lowStock: 2 })
+    compare(service.pendingNotifications.failedPayments, 2)
+    compare(service.pendingNotifications.lowStock, 2)
+
+    service.settings = { notifyFailedPayments: false, notifyLowStock: true }
+    compare(service.pendingNotifications.failedPayments, 0)
+    compare(service.pendingNotifications.lowStock, 2)
+    notificationService.doNotDisturb = false
+    compare(Quickshell.detachedCommands.length, 1)
+    verify(String(Quickshell.detachedCommands[0][6]).indexOf("failed payment") < 0)
+    verify(String(Quickshell.detachedCommands[0][6]).indexOf("+2 low-stock SKUs") >= 0)
+  }
+
+  function test_direct_lifecycle_action_updates_mcp_state_and_feedback() {
+    service.ready = true
+    service.configured = true
+    verify(service.runServiceAction("start"))
+    var process = lifecycleProcess()
+    verify(process !== null)
+    compare(process.command, ["stateset-omarchy", "service", "start", "--json"])
+    process.complete(0, '{"installed":true,"active":true,"state":"active"}', "")
+    compare(service.actionRunning, false)
+    compare(service.actionStatus, "MCP service started")
+    compare(service.mcpActive, true)
+    compare(service.mcpStatusKnown, true)
+  }
+
+  function test_unknown_or_unconfigured_actions_fail_closed() {
+    compare(service.runServiceAction("remove"), false)
+    compare(lifecycleProcess(), null)
+    compare(service.runServiceAction("install"), false)
+    compare(service.actionError, "Configure a readable store before installing MCP")
+  }
+
+  function test_lifecycle_failure_surfaces_bounded_cli_feedback() {
+    service.ready = true
+    service.configured = true
+    verify(service.runServiceAction("restart"))
+    var process = lifecycleProcess()
+    verify(process !== null)
+    process.complete(1, "", "Permission denied")
+    compare(service.actionRunning, false)
+    compare(service.actionError, "Permission denied")
+    compare(service.actionStatus, "Permission denied")
+  }
+}

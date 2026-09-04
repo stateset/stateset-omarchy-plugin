@@ -44,9 +44,15 @@ Panel {
     property bool mcpRefreshing: false
     property string mcpLastError: ""
     property date mcpLastUpdated: new Date(0)
+    property bool actionRunning: false
+    property string actionKind: ""
+    property string actionStatus: ""
+    property string actionError: ""
+    property var pendingNotifications: ({ failedPayments: 0, pendingReturns: 0, lowStock: 0 })
     function refresh() {}
     function refreshIfStale() {}
     function refreshService() {}
+    function runServiceAction(action) { return false }
   }
 
   readonly property var hostedService: {
@@ -66,12 +72,7 @@ Panel {
     dashboard: "stateset-omarchy dashboard",
     doctor: "stateset-omarchy doctor",
     remediate: "stateset-omarchy remediate",
-    serviceInstall: "stateset-omarchy service install",
-    serviceLogs: "/usr/bin/journalctl --user -u stateset-icommerce-mcp.service -n 100 --no-pager",
-    serviceRestart: "stateset-omarchy service restart",
-    serviceStart: "stateset-omarchy service start",
-    serviceStatus: "stateset-omarchy service status",
-    serviceStop: "stateset-omarchy service stop"
+    serviceLogs: "/usr/bin/journalctl --user -u stateset-icommerce-mcp.service -n 100 --no-pager"
   })
   readonly property bool operational: service.ready && service.configured
   readonly property string recoveryText: {
@@ -88,6 +89,7 @@ Panel {
   property double nowMs: Date.now()
   property bool cursorActive: false
   property int actionIndex: -1
+  property string confirmationAction: ""
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -101,13 +103,25 @@ Panel {
 
   function mcpToggleAction() {
     if (!service.mcpStatusKnown) return ""
-    if (!service.mcpInstalled) return "serviceInstall"
-    return service.mcpActive ? "serviceStop" : "serviceStart"
+    if (!service.mcpInstalled) return "install"
+    return service.mcpActive ? "stop" : "start"
   }
 
   function triggerMcpAction() {
     if (!service.mcpStatusKnown) service.refreshService()
-    else launch(mcpToggleAction())
+    else requestServiceAction(mcpToggleAction())
+  }
+
+  function requestServiceAction(action) {
+    if (service.actionRunning || ["install", "start", "stop", "restart"].indexOf(action) < 0) return
+    if ((action === "stop" || action === "restart") && confirmationAction !== action) {
+      confirmationAction = action
+      confirmationTimer.restart()
+      return
+    }
+    confirmationAction = ""
+    confirmationTimer.stop()
+    service.runServiceAction(action)
   }
 
   function availableActions() {
@@ -142,7 +156,11 @@ Panel {
       triggerMcpAction()
       return
     }
-    var actions = ["attention", "remediate", "dashboard", "agent", "backup", "doctor", "configureAgents", mcpToggleAction(), "serviceRestart", "serviceLogs"]
+    var actions = ["attention", "remediate", "dashboard", "agent", "backup", "doctor", "configureAgents", "", "", "serviceLogs"]
+    if (actionIndex === 8 && availableActions().indexOf(8) >= 0) {
+      requestServiceAction("restart")
+      return
+    }
     if (availableActions().indexOf(actionIndex) >= 0) launch(actions[actionIndex])
   }
 
@@ -180,6 +198,9 @@ Panel {
     panelFlick.contentY = 0
     service.refreshIfStale()
     service.refreshService()
+  } else {
+    confirmationAction = ""
+    confirmationTimer.stop()
   }
 
   Timer {
@@ -188,6 +209,13 @@ Panel {
     running: root.opened
     triggeredOnStart: true
     onTriggered: root.nowMs = Date.now()
+  }
+
+  Timer {
+    id: confirmationTimer
+    interval: 5000
+    repeat: false
+    onTriggered: root.confirmationAction = ""
   }
 
   Binding {
@@ -229,6 +257,8 @@ Panel {
           error: service.mcpLastError,
           lastUpdated: service.mcpLastUpdated instanceof Date && service.mcpLastUpdated.getTime() > 0 ? service.mcpLastUpdated.toISOString() : null
         },
+        action: { running: service.actionRunning, kind: service.actionKind, status: service.actionStatus, error: service.actionError },
+        notifications: { pending: Model.normalizeNotificationDelta(service.pendingNotifications) },
         lastUpdated: service.lastUpdated instanceof Date && service.lastUpdated.getTime() > 0 ? service.lastUpdated.toISOString() : null,
         lastAttempt: service.lastAttempt instanceof Date && service.lastAttempt.getTime() > 0 ? service.lastAttempt.toISOString() : null,
         nextRefreshAt: service.nextRefreshAt instanceof Date && service.nextRefreshAt.getTime() > 0 ? service.nextRefreshAt.toISOString() : null,
@@ -246,6 +276,10 @@ Panel {
     text: service.refreshing && !service.hasSnapshot ? "󰑓" : !service.ready ? "󰅖" : !service.configured ? "󰒓" : !service.signalsComplete || (service.alerts.total || 0) > 0 ? "󰀪" : "󰆼"
     foreground: !service.ready || (service.alerts.failedPayments || 0) > 0 ? root.urgent : root.foreground
     tooltipText: service.refreshing ? "Refreshing StateSet Commerce" : (!service.signalsComplete ? "Some operational signals unavailable · " : "") + ((service.alerts.total || 0) > 0 ? (service.alerts.total + " items need attention · ") : "") + service.message
+    Accessible.role: Accessible.Button
+    Accessible.name: "StateSet Commerce"
+    Accessible.description: tooltipText
+    Accessible.onPressAction: root.toggle()
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) service.refresh()
       else root.toggle()
@@ -325,6 +359,8 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               elide: Text.ElideMiddle
+              Accessible.role: Accessible.StaticText
+              Accessible.name: "Store status: " + text
             }
           }
           PanelActionButton {
@@ -332,6 +368,10 @@ Panel {
             foreground: root.foreground
             fontFamily: root.fontFamily
             enabled: !service.refreshing
+            Accessible.role: Accessible.Button
+            Accessible.name: "Refresh commerce status"
+            Accessible.description: service.refreshing ? "Commerce status is refreshing" : "Refresh store and MCP status now"
+            Accessible.onPressAction: if (enabled) service.refresh()
             onClicked: service.refresh()
           }
         }
@@ -367,6 +407,8 @@ Panel {
           color: Color.popups.background
           border.color: root.urgent
           border.width: 1
+          Accessible.role: Accessible.StaticText
+          Accessible.name: "Commerce unavailable. " + root.recoveryText
 
           RowLayout {
             id: unavailableRow
@@ -392,6 +434,10 @@ Panel {
               accent: root.urgent
               fontFamily: root.fontFamily
               hasCursor: root.cursorActive && root.actionIndex === 5
+              Accessible.role: Accessible.Button
+              Accessible.name: "Doctor"
+              Accessible.description: "Diagnose the StateSet controller and desktop integration"
+              Accessible.onPressAction: if (enabled) root.launch("doctor")
               onHovered: function(on) { if (on) root.setCursor(5) }
               onClicked: root.launch("doctor")
             }
@@ -406,6 +452,8 @@ Panel {
           color: Color.popups.background
           border.color: Color.accent
           border.width: 1
+          Accessible.role: Accessible.StaticText
+          Accessible.name: "Partial operational data. Unavailable: " + (service.unavailableSignals || []).join(", ")
 
           RowLayout {
             id: partialSignals
@@ -452,6 +500,8 @@ Panel {
           color: Color.popups.background
           border.color: (service.alerts.failedPayments || 0) > 0 ? root.urgent : Color.accent
           border.width: 1
+          Accessible.role: Accessible.StaticText
+          Accessible.name: Model.attentionHeadline(service.alerts) + ". " + Model.attentionSummary(service.alerts)
 
           RowLayout {
             id: attentionRow
@@ -497,6 +547,10 @@ Panel {
                 fontFamily: root.fontFamily
                 enabled: root.operational
                 hasCursor: root.cursorActive && root.actionIndex === 0
+                Accessible.role: Accessible.Button
+                Accessible.name: "Review attention items"
+                Accessible.description: Model.attentionSummary(service.alerts)
+                Accessible.onPressAction: if (enabled) root.launch("attention")
                 onHovered: function(on) { if (on) root.setCursor(0) }
                 onClicked: root.launch("attention")
               }
@@ -510,6 +564,10 @@ Panel {
                 fontFamily: root.fontFamily
                 enabled: root.operational
                 hasCursor: root.cursorActive && root.actionIndex === 1
+                Accessible.role: Accessible.Button
+                Accessible.name: "Resolve attention items"
+                Accessible.description: "Open the preview-only remediation specialist"
+                Accessible.onPressAction: if (enabled) root.launch("remediate")
                 onHovered: function(on) { if (on) root.setCursor(1) }
                 onClicked: root.launch("remediate")
               }
@@ -541,6 +599,8 @@ Panel {
                 required property var modelData
                 Layout.fillWidth: true
                 spacing: 0
+                Accessible.role: Accessible.StaticText
+                Accessible.name: metric.modelData.label + ": " + Model.formatExactCount(metric.modelData.value)
                 Text {
                   id: metricValue
                   Layout.alignment: Qt.AlignHCenter
@@ -583,6 +643,8 @@ Panel {
           font.pixelSize: Style.font.caption
           horizontalAlignment: Text.AlignHCenter
           font.bold: true
+          Accessible.role: Accessible.StaticText
+          Accessible.name: text
         }
 
         RowLayout {
@@ -599,6 +661,10 @@ Panel {
             fontFamily: root.fontFamily
             enabled: root.operational
             hasCursor: root.cursorActive && root.actionIndex === 2
+            Accessible.role: Accessible.Button
+            Accessible.name: "Dashboard"
+            Accessible.description: "Open the StateSet commerce dashboard"
+            Accessible.onPressAction: if (enabled) root.launch("dashboard")
             onHovered: function(on) { if (on) root.setCursor(2) }
             onClicked: root.launch("dashboard")
           }
@@ -613,6 +679,10 @@ Panel {
             fontFamily: root.fontFamily
             enabled: root.operational
             hasCursor: root.cursorActive && root.actionIndex === 3
+            Accessible.role: Accessible.Button
+            Accessible.name: "Agent"
+            Accessible.description: "Open the StateSet commerce agent"
+            Accessible.onPressAction: if (enabled) root.launch("agent")
             onHovered: function(on) { if (on) root.setCursor(3) }
             onClicked: root.launch("agent")
           }
@@ -627,6 +697,10 @@ Panel {
             fontFamily: root.fontFamily
             enabled: root.operational
             hasCursor: root.cursorActive && root.actionIndex === 4
+            Accessible.role: Accessible.Button
+            Accessible.name: "Backup"
+            Accessible.description: "Create a backup of the configured commerce store"
+            Accessible.onPressAction: if (enabled) root.launch("backup")
             onHovered: function(on) { if (on) root.setCursor(4) }
             onClicked: root.launch("backup")
           }
@@ -646,6 +720,10 @@ Panel {
             accent: Color.accent
             fontFamily: root.fontFamily
             hasCursor: root.cursorActive && root.actionIndex === 5
+            Accessible.role: Accessible.Button
+            Accessible.name: "Doctor"
+            Accessible.description: "Diagnose the StateSet controller and desktop integration"
+            Accessible.onPressAction: if (enabled) root.launch("doctor")
             onHovered: function(on) { if (on) root.setCursor(5) }
             onClicked: root.launch("doctor")
           }
@@ -660,21 +738,34 @@ Panel {
             fontFamily: root.fontFamily
             enabled: root.operational
             hasCursor: root.cursorActive && root.actionIndex === 6
+            Accessible.role: Accessible.Button
+            Accessible.name: "Configure agents"
+            Accessible.description: "Configure Claude, Codex, and OpenCode for this store"
+            Accessible.onPressAction: if (enabled) root.launch("configureAgents")
             onHovered: function(on) { if (on) root.setCursor(6) }
             onClicked: root.launch("configureAgents")
           }
           Button {
             id: mcpButton
             Layout.fillWidth: true
-            text: service.mcpRefreshing ? "MCP…" : !service.mcpStatusKnown ? "CHECK MCP" : !service.mcpInstalled ? "INSTALL MCP" : service.mcpActive ? "STOP MCP" : "START MCP"
+            text: service.actionRunning ? "MCP…"
+              : root.confirmationAction === "stop" ? "CONFIRM STOP"
+              : service.mcpRefreshing ? "MCP…"
+              : !service.mcpStatusKnown ? "CHECK MCP"
+              : !service.mcpInstalled ? "INSTALL MCP"
+              : service.mcpActive ? "STOP MCP" : "START MCP"
             tooltipText: service.mcpLastError || ("MCP service: " + service.mcpState)
             bordered: true
             foreground: root.foreground
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational && !service.mcpRefreshing
+            enabled: root.operational && !service.mcpRefreshing && !service.actionRunning
             hasCursor: root.cursorActive && root.actionIndex === 7
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            Accessible.description: tooltipText
+            Accessible.onPressAction: if (enabled) root.triggerMcpAction()
             onHovered: function(on) { if (on) root.setCursor(7) }
             onClicked: root.triggerMcpAction()
           }
@@ -687,17 +778,21 @@ Panel {
           Button {
             id: restartButton
             Layout.fillWidth: true
-            text: "RESTART MCP"
+            text: root.confirmationAction === "restart" ? "CONFIRM RESTART" : "RESTART MCP"
             tooltipText: "Restart the local MCP service"
             bordered: true
             foreground: root.foreground
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && !service.mcpRefreshing && !service.actionRunning
             hasCursor: root.cursorActive && root.actionIndex === 8
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            Accessible.description: tooltipText
+            Accessible.onPressAction: if (enabled) root.requestServiceAction("restart")
             onHovered: function(on) { if (on) root.setCursor(8) }
-            onClicked: root.launch("serviceRestart")
+            onClicked: root.requestServiceAction("restart")
           }
           Button {
             id: logsButton
@@ -710,9 +805,29 @@ Panel {
             accent: Color.accent
             fontFamily: root.fontFamily
             hasCursor: root.cursorActive && root.actionIndex === 9
+            Accessible.role: Accessible.Button
+            Accessible.name: "MCP logs"
+            Accessible.description: tooltipText
+            Accessible.onPressAction: if (enabled) root.launch("serviceLogs")
             onHovered: function(on) { if (on) root.setCursor(9) }
             onClicked: root.launch("serviceLogs")
           }
+        }
+
+        Text {
+          visible: root.confirmationAction !== "" || service.actionStatus !== ""
+          Layout.fillWidth: true
+          text: root.confirmationAction === "stop" ? "Press Stop MCP again to confirm."
+            : root.confirmationAction === "restart" ? "Press Restart MCP again to confirm."
+            : service.actionStatus
+          textFormat: Text.PlainText
+          color: service.actionError !== "" ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          horizontalAlignment: Text.AlignHCenter
+          wrapMode: Text.WordWrap
+          Accessible.role: Accessible.StaticText
+          Accessible.name: text
         }
         }
       }
