@@ -1,0 +1,22 @@
+# Upstream handoff
+
+The publishable QML files originate in `cli/omarchy` of the main iCommerce
+repository. This mirror contains changes that must land there before the next
+CLI release.
+
+From this repository, export the runtime files into a clean checkout whose CLI
+version matches `manifest.json`:
+
+```bash
+./scripts/export-to-upstream.sh /path/to/stateset-icommerce
+```
+
+The exporter also applies `patches/status-schema-v1.patch`, which adds an
+explicit schema version to `stateset-omarchy status --json`, and runs the
+upstream Omarchy integration checker. Review the resulting upstream diff, run
+the upstream CLI unit tests, and submit it through the main repository's normal
+review process.
+
+Do not release a later CLI version until the preserved mirror tests pass against
+its generated plugin. This prevents release synchronization from silently
+dropping security or operator-experience improvements.

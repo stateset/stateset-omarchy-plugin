@@ -1,4 +1,5 @@
 var MAX_OUTPUT_CHARS = 65536
+var MAX_ERROR_CHARS = 4096
 var MAX_TEXT_CHARS = 160
 var MAX_PATH_CHARS = 1024
 var MAX_COUNT = 999999999
@@ -7,6 +8,7 @@ var MAX_JSON_FIELDS = 256
 var MAX_JSON_ARRAYS = 16
 var MAX_JSON_ARRAY_DEPTH = 3
 var MAX_JSON_ARRAY_SEPARATORS = 127
+var STATUS_SCHEMA_VERSION = 1
 
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : ({})
@@ -20,9 +22,18 @@ function boundedCount(value) {
   return Math.min(MAX_COUNT, Math.floor(parsed))
 }
 
+function boundedBytes(value) {
+  if (typeof value === "string" && !/^\d+$/.test(value)) return 0
+  if (typeof value !== "string" && typeof value !== "number") return 0
+  var parsed = Number(value)
+  if (!isFinite(parsed) || parsed < 0) return 0
+  return Math.min(9007199254740991, Math.floor(parsed))
+}
+
 function safeText(value, limit, fallback) {
   if (typeof value !== "string") return fallback || ""
-  var bounded = value.slice(0, Math.max(0, limit || MAX_TEXT_CHARS))
+  var maximum = typeof limit === "number" && isFinite(limit) ? Math.max(0, limit) : MAX_TEXT_CHARS
+  var bounded = value.slice(0, maximum)
   return bounded
     .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
     .replace(/&/g, "＆")
@@ -54,6 +65,17 @@ function normalizeAlerts(value) {
   alerts.total = Math.min(MAX_COUNT,
     alerts.pendingOrders + alerts.failedPayments + alerts.pendingReturns + alerts.lowStock)
   return alerts
+}
+
+function normalizeUnavailableSignals(value) {
+  if (!Array.isArray(value)) return []
+  var allowed = ["orders", "payments", "pendingReturns", "lowStockItems"]
+  var result = []
+  for (var index = 0; index < value.length && result.length < allowed.length; index += 1) {
+    var signal = value[index]
+    if (allowed.indexOf(signal) >= 0 && result.indexOf(signal) < 0) result.push(signal)
+  }
+  return result
 }
 
 function validateJsonEnvelope(text) {
@@ -108,16 +130,53 @@ function validateJsonEnvelope(text) {
 
 function normalizeStatus(value) {
   var source = record(value)
+  if (source.schemaVersion !== undefined && source.schemaVersion !== STATUS_SCHEMA_VERSION) {
+    throw new Error("Unsupported status schema version")
+  }
   var ready = source.ok === true
+  var unavailableSignals = normalizeUnavailableSignals(source.unavailableSignals)
   return {
     ok: ready,
+    schemaVersion: source.schemaVersion === STATUS_SCHEMA_VERSION ? STATUS_SCHEMA_VERSION : 0,
     configured: source.configured === true,
     dbPath: safeText(source.dbPath, MAX_PATH_CHARS, ""),
     mode: source.mode === "governed-apply" ? "governed-apply" : "preview",
     message: safeText(source.message, MAX_TEXT_CHARS, ready ? "Store ready" : "Store unavailable"),
+    sizeBytes: boundedBytes(source.sizeBytes),
     counts: normalizeCounts(source.counts),
-    alerts: normalizeAlerts(source.alerts)
+    alerts: normalizeAlerts(source.alerts),
+    signalsComplete: source.signalsComplete !== false && unavailableSignals.length === 0,
+    unavailableSignals: unavailableSignals
   }
+}
+
+function normalizeServiceStatus(value) {
+  var source = record(value)
+  var states = ["active", "activating", "deactivating", "failed", "inactive", "not-installed", "removed", "unknown"]
+  var state = typeof source.state === "string" && states.indexOf(source.state) >= 0 ? source.state : "unknown"
+  return {
+    installed: source.installed === true,
+    active: source.active === true,
+    state: state
+  }
+}
+
+function parseServiceStatusJson(text) {
+  validateJsonEnvelope(text)
+  var value = JSON.parse(text)
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Service response must be an object")
+  }
+  return normalizeServiceStatus(value)
+}
+
+function classifyFailure(exitCode, output, timedOut, truncated) {
+  if (timedOut === true || exitCode === 124) return "timeout"
+  if (truncated === true) return "oversized-response"
+  var text = String(output || "").toLowerCase()
+  if (exitCode === 127 || /command not found|no such file or directory/.test(text)) return "controller-missing"
+  if (exitCode !== 0) return "controller-error"
+  return "invalid-response"
 }
 
 function parseStatusJson(text) {
@@ -130,15 +189,52 @@ function parseStatusJson(text) {
 }
 
 function appendBounded(current, chunk, limit) {
-  var maximum = Math.max(1, limit || MAX_OUTPUT_CHARS)
+  var maximum = typeof limit === "number" && isFinite(limit) ? Math.max(1, limit) : MAX_OUTPUT_CHARS
   var existing = typeof current === "string" ? current : ""
-  var incoming = typeof chunk === "string" ? chunk : String(chunk || "")
+  var incoming = typeof chunk === "string" ? chunk : String(chunk === null || chunk === undefined ? "" : chunk)
   var remaining = maximum - existing.length
   if (remaining <= 0) return { text: existing, truncated: incoming.length > 0 }
   return {
     text: existing + incoming.slice(0, remaining),
     truncated: incoming.length > remaining
   }
+}
+
+function formatCount(value) {
+  var count = boundedCount(value)
+  if (count < 1000) return String(count)
+  if (count < 10000) return (Math.floor(count / 100) / 10).toFixed(1).replace(/\.0$/, "") + "K"
+  if (count < 1000000) return Math.floor(count / 1000) + "K"
+  if (count < 10000000) return (Math.floor(count / 100000) / 10).toFixed(1).replace(/\.0$/, "") + "M"
+  return Math.floor(count / 1000000) + "M"
+}
+
+function formatBytes(value) {
+  var bytes = boundedBytes(value)
+  if (bytes < 1024) return bytes + " B"
+  var units = ["KiB", "MiB", "GiB", "TiB"]
+  var amount = bytes
+  var unit = 0
+  while (amount >= 1024 && unit < units.length) {
+    amount /= 1024
+    unit += 1
+  }
+  var precision = amount < 10 ? 1 : 0
+  return amount.toFixed(precision).replace(/\.0$/, "") + " " + units[unit - 1]
+}
+
+function freshnessLabel(value, now) {
+  var timestamp = value instanceof Date ? value.getTime() : Number(value)
+  var current = now instanceof Date ? now.getTime() : Number(now)
+  if (!isFinite(timestamp) || timestamp <= 0) return "Not updated yet"
+  if (!isFinite(current)) current = Date.now()
+  var seconds = Math.max(0, Math.floor((current - timestamp) / 1000))
+  if (seconds < 10) return "Updated just now"
+  if (seconds < 60) return "Updated " + seconds + "s ago"
+  var minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return "Updated " + minutes + "m ago"
+  var hours = Math.floor(minutes / 60)
+  return "Updated " + hours + "h ago"
 }
 
 function attentionSummary(value) {
@@ -151,6 +247,11 @@ function attentionSummary(value) {
   return parts.join(" · ")
 }
 
+function attentionHeadline(value) {
+  var total = normalizeAlerts(value).total
+  return total + (total === 1 ? " NEEDS ATTENTION" : " NEED ATTENTION")
+}
+
 function shouldNotify(previous, next, hasBaseline) {
   if (hasBaseline !== true) return false
   var before = normalizeAlerts(previous)
@@ -160,16 +261,65 @@ function shouldNotify(previous, next, hasBaseline) {
     || after.pendingReturns > before.pendingReturns
 }
 
+function notificationCandidate(previous, next, policy) {
+  var before = normalizeAlerts(previous)
+  var after = normalizeAlerts(next)
+  var options = record(policy)
+  return {
+    pendingOrders: before.pendingOrders,
+    failedPayments: options.failedPayments === false ? before.failedPayments : after.failedPayments,
+    pendingReturns: options.pendingReturns === false ? before.pendingReturns : after.pendingReturns,
+    lowStock: options.lowStock === false ? before.lowStock : after.lowStock
+  }
+}
+
+function cooldownElapsed(lastNotificationAt, now, cooldownMinutes) {
+  var last = Number(lastNotificationAt)
+  var current = Number(now)
+  var minutes = Number(cooldownMinutes)
+  if (!isFinite(last) || last <= 0) return true
+  if (!isFinite(current)) current = Date.now()
+  if (!isFinite(minutes)) minutes = 15
+  minutes = Math.max(1, Math.min(240, minutes))
+  return current - last >= minutes * 60000
+}
+
+function notificationSummary(previous, next) {
+  var before = normalizeAlerts(previous)
+  var after = normalizeAlerts(next)
+  var parts = []
+  var failedPayments = Math.max(0, after.failedPayments - before.failedPayments)
+  var lowStock = Math.max(0, after.lowStock - before.lowStock)
+  var pendingReturns = Math.max(0, after.pendingReturns - before.pendingReturns)
+  if (failedPayments > 0) parts.push("+" + failedPayments + " failed payment" + (failedPayments === 1 ? "" : "s"))
+  if (lowStock > 0) parts.push("+" + lowStock + " low-stock SKU" + (lowStock === 1 ? "" : "s"))
+  if (pendingReturns > 0) parts.push("+" + pendingReturns + " pending return" + (pendingReturns === 1 ? "" : "s"))
+  return parts.join(" · ")
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     MAX_OUTPUT_CHARS: MAX_OUTPUT_CHARS,
+    MAX_ERROR_CHARS: MAX_ERROR_CHARS,
+    STATUS_SCHEMA_VERSION: STATUS_SCHEMA_VERSION,
     appendBounded: appendBounded,
+    formatBytes: formatBytes,
+    formatCount: formatCount,
+    freshnessLabel: freshnessLabel,
     normalizeAlerts: normalizeAlerts,
     normalizeCounts: normalizeCounts,
     normalizeStatus: normalizeStatus,
+    normalizeServiceStatus: normalizeServiceStatus,
+    normalizeUnavailableSignals: normalizeUnavailableSignals,
     parseStatusJson: parseStatusJson,
+    parseServiceStatusJson: parseServiceStatusJson,
+    classifyFailure: classifyFailure,
     safeText: safeText,
     attentionSummary: attentionSummary,
+    attentionHeadline: attentionHeadline,
+    cooldownElapsed: cooldownElapsed,
+    notificationCandidate: notificationCandidate,
+    notificationSummary: notificationSummary,
     shouldNotify: shouldNotify
   }
 }

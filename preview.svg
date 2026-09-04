@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090d12"/>
+      <stop offset="1" stop-color="#111923"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18212c"/>
+      <stop offset="1" stop-color="#111820"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <circle cx="180" cy="560" r="260" fill="#38d6b2" opacity=".035"/>
+  <circle cx="1010" cy="160" r="300" fill="#67a8ff" opacity=".035"/>
+
+  <rect x="0" y="0" width="1200" height="44" fill="#0c1219"/>
+  <text x="28" y="29" fill="#dce7f2" font-family="Inter, sans-serif" font-size="15" font-weight="600">OMARCHY</text>
+  <text x="1000" y="29" fill="#8da0b3" font-family="Inter, sans-serif" font-size="14">      12:42</text>
+  <rect x="1144" y="8" width="38" height="28" rx="8" fill="#20303e" stroke="#38d6b2"/>
+  <text x="1163" y="28" fill="#38d6b2" text-anchor="middle" font-family="sans-serif" font-size="17">◆</text>
+
+  <g filter="url(#shadow)">
+    <rect x="650" y="64" width="510" height="575" rx="16" fill="url(#panel)" stroke="#2d3b49"/>
+  </g>
+
+  <text x="682" y="112" fill="#38d6b2" font-family="sans-serif" font-size="31">◆</text>
+  <text x="728" y="101" fill="#f0f6fb" font-family="Inter, sans-serif" font-size="20" font-weight="700">StateSet Commerce</text>
+  <text x="728" y="124" fill="#91a5b8" font-family="Inter, sans-serif" font-size="13">Store ready · 4 need attention</text>
+  <text x="1124" y="107" fill="#b8c9d8" text-anchor="end" font-family="sans-serif" font-size="21">↻</text>
+  <line x1="682" y1="144" x2="1128" y2="144" stroke="#344351"/>
+
+  <text x="682" y="171" fill="#8398aa" font-family="monospace" font-size="12">~/commerce/store.db</text>
+  <text x="1128" y="171" fill="#8398aa" text-anchor="end" font-family="Inter, sans-serif" font-size="12">18 MiB · Updated just now</text>
+
+  <rect x="682" y="191" width="446" height="92" rx="10" fill="#10171f" stroke="#ff657a"/>
+  <circle cx="710" cy="222" r="12" fill="#ff657a" opacity=".16"/>
+  <text x="710" y="228" fill="#ff657a" text-anchor="middle" font-family="sans-serif" font-size="16">!</text>
+  <text x="734" y="220" fill="#f0f6fb" font-family="Inter, sans-serif" font-size="14" font-weight="700">4 NEED ATTENTION</text>
+  <text x="734" y="244" fill="#8fa2b4" font-family="Inter, sans-serif" font-size="12">1 failed payment · 2 low-stock SKUs · 1 return</text>
+  <rect x="986" y="252" width="62" height="22" rx="5" fill="#1a2631" stroke="#38d6b2"/>
+  <text x="1017" y="267" fill="#dce7f2" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" font-weight="700">REVIEW</text>
+  <rect x="1056" y="252" width="62" height="22" rx="5" fill="#1a2631" stroke="#ff657a"/>
+  <text x="1087" y="267" fill="#dce7f2" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" font-weight="700">RESOLVE</text>
+
+  <rect x="682" y="299" width="446" height="80" rx="10" fill="#10171f" stroke="#38d6b2"/>
+  <g fill="#f0f6fb" font-family="Inter, sans-serif" font-size="18" font-weight="700" text-anchor="middle">
+    <text x="727" y="331">248</text><text x="816" y="331">91</text><text x="905" y="331">64</text><text x="994" y="331">7</text><text x="1083" y="331">239</text>
+  </g>
+  <g fill="#7f94a7" font-family="Inter, sans-serif" font-size="9" text-anchor="middle">
+    <text x="727" y="354">ORDERS</text><text x="816" y="354">CUSTOMERS</text><text x="905" y="354">PRODUCTS</text><text x="994" y="354">RETURNS</text><text x="1083" y="354">PAYMENTS</text>
+  </g>
+
+  <text x="905" y="406" fill="#38d6b2" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" font-weight="700">PREVIEW ONLY · WRITES REQUIRE EXPLICIT APPLY</text>
+
+  <g font-family="Inter, sans-serif" font-size="11" font-weight="700" text-anchor="middle">
+    <rect x="682" y="430" width="140" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="752" y="453" fill="#e3edf5">DASHBOARD</text>
+    <rect x="835" y="430" width="140" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="905" y="453" fill="#e3edf5">AGENT</text>
+    <rect x="988" y="430" width="140" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="1058" y="453" fill="#e3edf5">BACKUP</text>
+    <rect x="682" y="480" width="102" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="733" y="503" fill="#e3edf5">DOCTOR</text>
+    <rect x="797" y="480" width="102" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="848" y="503" fill="#e3edf5">AGENTS</text>
+    <rect x="912" y="480" width="102" height="38" rx="8" fill="#15202a" stroke="#38d6b2"/><text x="963" y="503" fill="#e3edf5">MCP ACTIVE</text>
+    <rect x="1027" y="480" width="101" height="38" rx="8" fill="#15202a" stroke="#3b5062"/><text x="1078" y="503" fill="#e3edf5">RESTART</text>
+  </g>
+
+  <rect x="682" y="545" width="446" height="60" rx="10" fill="#0e151c"/>
+  <circle cx="708" cy="575" r="5" fill="#38d6b2"/>
+  <text x="724" y="579" fill="#afc2d2" font-family="Inter, sans-serif" font-size="12">MCP service active · operational signals healthy</text>
+
+  <text x="58" y="255" fill="#f0f6fb" font-family="Inter, sans-serif" font-size="44" font-weight="750">Commerce operations,</text>
+  <text x="58" y="309" fill="#38d6b2" font-family="Inter, sans-serif" font-size="44" font-weight="750">at a glance.</text>
+  <text x="61" y="353" fill="#8da0b3" font-family="Inter, sans-serif" font-size="16">Local status. Governed actions.</text>
+  <text x="61" y="378" fill="#8da0b3" font-family="Inter, sans-serif" font-size="16">No runtime downloads.</text>
+  <rect x="60" y="414" width="190" height="34" rx="17" fill="#14231f" stroke="#2c6d5e"/>
+  <text x="155" y="436" fill="#63ddc0" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" font-weight="700">STATESET × OMARCHY</text>
+</svg>

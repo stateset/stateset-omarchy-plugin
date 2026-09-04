@@ -47,14 +47,52 @@ jobs:
           fi
           git -C upstream checkout "$tag"
           node upstream/scripts/package-omarchy-plugin.mjs --output "$RUNNER_TEMP/plugin"
-          rm -rf upstream
           echo "changed=true" >> "$GITHUB_OUTPUT"
       - name: Replace generated files
         if: steps.release.outputs.changed == 'true'
         run: |
-          git rm -r --ignore-unmatch .
-          cp -a "$RUNNER_TEMP/plugin/." .
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'CONTRIBUTING.md' \
+            --exclude 'ARCHITECTURE.md' \
+            --exclude 'UPSTREAM.md' \
+            --exclude 'patches/' \
+            --exclude 'preview.png' \
+            --exclude 'preview.svg' \
+            --exclude 'scripts/' \
+            --exclude 'test/' \
+            --exclude 'upstream/' \
+            "$RUNNER_TEMP/plugin/" ./
+      - name: Validate generated release
+        if: steps.release.outputs.changed == 'true'
+        env:
+          OMARCHY_REVISION: f99d33a8ddee7b36509a71a6d20d5d23355ce8b1
+        run: |
+          node --test test/*.test.js
+          git diff --check
+          git clone --filter=blob:none https://github.com/omacom/omarchy.git "$RUNNER_TEMP/omarchy"
+          git -C "$RUNNER_TEMP/omarchy" checkout "$OMARCHY_REVISION"
+          "$RUNNER_TEMP/omarchy/bin/omarchy-plugin-validate" .
+          cp Model.js Panel.qml README.md Service.qml ServiceHost.js manifest.json upstream/cli/omarchy/
+          node upstream/scripts/ci/check_omarchy_integration.mjs
+          rm -rf upstream
           git add --all
+      - name: Close superseded synchronization pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGED: ${{ steps.release.outputs.changed }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          keep=""
+          if [ "$CHANGED" = "true" ]; then
+            keep="sync/icommerce-v${VERSION}"
+          fi
+          gh pr list --state open --limit 100 --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"sync/icommerce-v\")) | select(.headRefName != \"$keep\") | .number" |
+          while read -r pr; do
+            gh pr close "$pr" --comment "Superseded by iCommerce CLI v${VERSION}."
+          done
       - name: Open synchronization pull request
         if: steps.release.outputs.changed == 'true'
         env:

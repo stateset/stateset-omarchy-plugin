@@ -1,0 +1,25 @@
+#!/bin/sh
+
+case "${STATESET_FIXTURE_SCENARIO:-healthy}" in
+  healthy)
+    printf '%s\n' '{"ok":true,"configured":true,"message":"Store ready","counts":{"orders":2},"alerts":{}}'
+    ;;
+  error)
+    printf '%s\n' 'fixture controller failed' >&2
+    exit 3
+    ;;
+  oversized)
+    head -c 70000 /dev/zero | tr '\0' x
+    ;;
+  timeout)
+    sleep 2
+    printf '%s\n' '{"ok":true}'
+    ;;
+  service)
+    printf '%s\n' '{"installed":true,"active":true,"state":"active"}'
+    ;;
+  *)
+    printf '%s\n' 'unknown fixture scenario' >&2
+    exit 2
+    ;;
+esac
