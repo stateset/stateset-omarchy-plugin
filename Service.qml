@@ -26,11 +26,15 @@ Item {
   property bool hasSnapshot: false
   property date lastUpdated: new Date(0)
   property date lastAttempt: new Date(0)
+  property date nextRefreshAt: new Date(0)
+  property int consecutiveFailures: 0
   property bool mcpInstalled: false
   property bool mcpActive: false
+  property bool mcpStatusKnown: false
   property string mcpState: "unknown"
   property bool mcpRefreshing: false
   property string mcpLastError: ""
+  property date mcpLastUpdated: new Date(0)
   property string _stdout: ""
   property string _stderr: ""
   property bool _stdoutTruncated: false
@@ -57,6 +61,7 @@ Item {
 
   function refresh() {
     if (refreshing || statusProcess.running) return
+    refreshTimer.stop()
     refreshing = true
     _stdout = ""
     _stderr = ""
@@ -81,6 +86,15 @@ Item {
     failureKind = kind || "controller-error"
     lastError = Model.safeText(messageText, 240, "StateSet controller failed")
     message = lastError
+    consecutiveFailures += 1
+    scheduleRefresh()
+  }
+
+  function scheduleRefresh() {
+    var delay = Model.retryIntervalSeconds(refreshIntervalSec, consecutiveFailures)
+    nextRefreshAt = new Date(Date.now() + delay * 1000)
+    refreshTimer.interval = delay * 1000
+    refreshTimer.restart()
   }
 
   function refreshService() {
@@ -100,6 +114,8 @@ Item {
   function finishService(exitCode) {
     mcpRefreshing = false
     if (exitCode !== 0 || _serviceTruncated) {
+      mcpStatusKnown = false
+      mcpActive = false
       mcpLastError = Model.safeText(_serviceOutput, 160, "Unable to read MCP service status")
       mcpState = "unknown"
       return
@@ -108,9 +124,13 @@ Item {
       var value = Model.parseServiceStatusJson(_serviceOutput)
       mcpInstalled = value.installed
       mcpActive = value.active
+      mcpStatusKnown = true
       mcpState = value.state
       mcpLastError = ""
+      mcpLastUpdated = new Date()
     } catch (error) {
+      mcpStatusKnown = false
+      mcpActive = false
       mcpLastError = "Invalid MCP service response"
       mcpState = "unknown"
     }
@@ -172,6 +192,8 @@ Item {
       failureKind = ready ? "" : (configured ? "store-unavailable" : "not-configured")
       lastError = ready ? "" : message
       lastUpdated = new Date()
+      consecutiveFailures = ready ? 0 : consecutiveFailures + 1
+      scheduleRefresh()
       refreshService()
     } catch (error) {
       var incompatible = String(error).indexOf("Unsupported status schema version") >= 0
@@ -181,8 +203,9 @@ Item {
   }
 
   Timer {
+    id: refreshTimer
     interval: root.refreshIntervalSec * 1000
-    repeat: true
+    repeat: false
     running: true
     triggeredOnStart: true
     onTriggered: root.refresh()

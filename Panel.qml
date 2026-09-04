@@ -30,15 +30,20 @@ Panel {
     property bool hasSnapshot: false
     property date lastUpdated: new Date(0)
     property date lastAttempt: new Date(0)
+    property date nextRefreshAt: new Date(0)
+    property int consecutiveFailures: 0
+    property int refreshIntervalSec: 120
     property var counts: ({ orders: 0, customers: 0, products: 0, returns: 0, payments: 0 })
     property var alerts: ({ pendingOrders: 0, failedPayments: 0, pendingReturns: 0, lowStock: 0, total: 0 })
     property bool signalsComplete: true
     property var unavailableSignals: []
     property bool mcpInstalled: false
     property bool mcpActive: false
+    property bool mcpStatusKnown: false
     property string mcpState: "unknown"
     property bool mcpRefreshing: false
     property string mcpLastError: ""
+    property date mcpLastUpdated: new Date(0)
     function refresh() {}
     function refreshIfStale() {}
     function refreshService() {}
@@ -70,12 +75,15 @@ Panel {
   })
   readonly property bool operational: service.ready && service.configured
   readonly property string recoveryText: {
-    if (service.failureKind === "controller-missing") return "Install @stateset/cli@1.30.0, then refresh."
-    if (service.failureKind === "incompatible-controller") return "Update the StateSet CLI to the version in manifest.json."
-    if (service.failureKind === "timeout") return "The controller did not answer within 8 seconds."
-    if (service.failureKind === "not-configured") return "Run stateset-omarchy install inside a store project."
-    if (service.failureKind === "store-unavailable") return "The configured commerce store is not readable."
-    return service.hasSnapshot ? "Showing the last valid snapshot." : "Check the controller and store configuration."
+    var text = ""
+    if (service.failureKind === "controller-missing") text = "Install @stateset/cli@1.30.0, then refresh."
+    else if (service.failureKind === "incompatible-controller") text = "Update the StateSet CLI to the version in manifest.json."
+    else if (service.failureKind === "timeout") text = "The controller did not answer within 8 seconds."
+    else if (service.failureKind === "not-configured") text = "Run stateset-omarchy install inside a store project."
+    else if (service.failureKind === "store-unavailable") text = "The configured commerce store is not readable."
+    else text = service.hasSnapshot ? "Showing the last valid snapshot." : "Check the controller and store configuration."
+    var retry = Model.retryCountdownLabel(service.nextRefreshAt, nowMs)
+    return retry ? text + " " + retry + "." : text
   }
   property double nowMs: Date.now()
   property bool cursorActive: false
@@ -92,8 +100,14 @@ Panel {
   }
 
   function mcpToggleAction() {
+    if (!service.mcpStatusKnown) return ""
     if (!service.mcpInstalled) return "serviceInstall"
     return service.mcpActive ? "serviceStop" : "serviceStart"
+  }
+
+  function triggerMcpAction() {
+    if (!service.mcpStatusKnown) service.refreshService()
+    else launch(mcpToggleAction())
   }
 
   function availableActions() {
@@ -102,8 +116,8 @@ Panel {
     if (operational) indexes.push(2, 3, 4)
     if ((service.ready || !service.refreshing) && service.failureKind !== "controller-missing") indexes.push(5)
     if (operational) indexes.push(6, 7)
-    if (operational && service.mcpInstalled) indexes.push(8)
-    if (service.mcpInstalled) indexes.push(9)
+    if (operational && service.mcpStatusKnown && service.mcpInstalled) indexes.push(8)
+    if (service.mcpStatusKnown && service.mcpInstalled) indexes.push(9)
     return indexes
   }
 
@@ -124,6 +138,10 @@ Panel {
   }
 
   function activateCursor() {
+    if (actionIndex === 7 && availableActions().indexOf(7) >= 0) {
+      triggerMcpAction()
+      return
+    }
     var actions = ["attention", "remediate", "dashboard", "agent", "backup", "doctor", "configureAgents", mcpToggleAction(), "serviceRestart", "serviceLogs"]
     if (availableActions().indexOf(actionIndex) >= 0) launch(actions[actionIndex])
   }
@@ -203,9 +221,19 @@ Panel {
         alerts: service.alerts,
         signalsComplete: service.signalsComplete,
         unavailableSignals: service.unavailableSignals,
-        mcp: { installed: service.mcpInstalled, active: service.mcpActive, state: service.mcpState, error: service.mcpLastError },
+        mcp: {
+          installed: service.mcpInstalled,
+          active: service.mcpActive,
+          known: service.mcpStatusKnown,
+          state: service.mcpState,
+          error: service.mcpLastError,
+          lastUpdated: service.mcpLastUpdated instanceof Date && service.mcpLastUpdated.getTime() > 0 ? service.mcpLastUpdated.toISOString() : null
+        },
         lastUpdated: service.lastUpdated instanceof Date && service.lastUpdated.getTime() > 0 ? service.lastUpdated.toISOString() : null,
         lastAttempt: service.lastAttempt instanceof Date && service.lastAttempt.getTime() > 0 ? service.lastAttempt.toISOString() : null,
+        nextRefreshAt: service.nextRefreshAt instanceof Date && service.nextRefreshAt.getTime() > 0 ? service.nextRefreshAt.toISOString() : null,
+        consecutiveFailures: service.consecutiveFailures,
+        effectiveRefreshIntervalSec: Model.retryIntervalSeconds(service.refreshIntervalSec, service.consecutiveFailures),
         error: service.lastError
       })
     }
@@ -246,8 +274,11 @@ Panel {
         else if (text === "d" || text === "D") { if (root.operational) root.launch("dashboard") }
         else if (text === "a" || text === "A") { if (root.operational) root.launch("agent") }
         else if (text === "b" || text === "B") { if (root.operational) root.launch("backup") }
-        else if (text === "c" || text === "C") { if (root.operational) root.launch("configureAgents") }
-        else if (text === "m" || text === "M") { if (root.operational) root.launch(root.mcpToggleAction()) }
+        else if (text === "c" || text === "C") {
+          if (service.failureKind !== "controller-missing") root.launch("doctor")
+        }
+        else if (text === "g" || text === "G") { if (root.operational) root.launch("configureAgents") }
+        else if (text === "m" || text === "M") { if (root.operational) root.triggerMcpAction() }
       }
 
       Flickable {
@@ -511,6 +542,7 @@ Panel {
                 Layout.fillWidth: true
                 spacing: 0
                 Text {
+                  id: metricValue
                   Layout.alignment: Qt.AlignHCenter
                   text: Model.formatCount(metric.modelData.value)
                   textFormat: Text.PlainText
@@ -518,6 +550,16 @@ Panel {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.title
                   font.bold: true
+                  MouseArea {
+                    id: metricHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                  }
+                  PanelToolTip {
+                    visible: metricHover.containsMouse
+                    text: metric.modelData.label + ": " + Model.formatExactCount(metric.modelData.value)
+                  }
                 }
                 Text {
                   Layout.alignment: Qt.AlignHCenter
@@ -624,22 +666,22 @@ Panel {
           Button {
             id: mcpButton
             Layout.fillWidth: true
-            text: service.mcpRefreshing ? "MCP…" : !service.mcpInstalled ? "INSTALL MCP" : service.mcpActive ? "STOP MCP" : "START MCP"
+            text: service.mcpRefreshing ? "MCP…" : !service.mcpStatusKnown ? "CHECK MCP" : !service.mcpInstalled ? "INSTALL MCP" : service.mcpActive ? "STOP MCP" : "START MCP"
             tooltipText: service.mcpLastError || ("MCP service: " + service.mcpState)
             bordered: true
             foreground: root.foreground
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && !service.mcpRefreshing
             hasCursor: root.cursorActive && root.actionIndex === 7
             onHovered: function(on) { if (on) root.setCursor(7) }
-            onClicked: root.launch(root.mcpToggleAction())
+            onClicked: root.triggerMcpAction()
           }
         }
 
         RowLayout {
-          visible: service.ready && service.mcpInstalled
+          visible: service.ready && service.mcpStatusKnown && service.mcpInstalled
           Layout.fillWidth: true
           spacing: Style.space(8)
           Button {
