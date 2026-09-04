@@ -5,7 +5,7 @@ repository. This mirror contains changes that must land there before the next
 CLI release.
 
 From this repository, export the runtime files into a clean checkout whose CLI
-version matches `manifest.json`:
+version matches `contract.json` and `upstream-version.txt`:
 
 ```bash
 ./scripts/export-to-upstream.sh /path/to/stateset-icommerce
@@ -14,7 +14,9 @@ version matches `manifest.json`:
 The exporter also applies `patches/status-schema-v1.patch`, which adds the
 explicit schema version, exact controller version, and allowlisted capability
 handshake to `stateset-omarchy status --json`, and runs the upstream Omarchy
-integration checker. Review the resulting upstream diff, run the upstream CLI
+integration checker. The controller consumes the exported contract directly,
+so its capability list cannot drift from the plugin. Review the resulting
+upstream diff, run the upstream CLI
 unit tests, and submit it through the main repository's normal review process.
 
 `upstream-version.txt` records the exact CLI release used by this plugin. It is
@@ -24,7 +26,8 @@ updates both the generated runtime and this compatibility marker together. The
 exporter rewrites only the copied upstream manifest version to that CLI release,
 as required by the upstream packaging invariant.
 
-The deterministic `demo/` harness is copied upstream with the runtime so CLI
+The compatibility contract and deterministic `demo/` harness are copied
+upstream with the runtime so CLI
 release packaging can reproduce the same fictional states and screenshots.
 Repository-only Node and QML test infrastructure remains owned by this mirror.
 

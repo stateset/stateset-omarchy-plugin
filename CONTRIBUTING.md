@@ -20,6 +20,7 @@ Use Node.js 20.20 or newer and an Omarchy Quattro installation:
 
 ```bash
 node --test
+node scripts/generate-contract.mjs --check
 ./demo/run --check
 omarchy plugin validate .
 git diff --check
@@ -30,6 +31,11 @@ analyzable `qmllint` diagnostics with a zero-warning budget, and instantiates
 `Service.qml` under `qmltestrunner`. `test/process-boundary.test.js`
 executes the real timeout/head pipeline against a deterministic fixture; keep
 that test aligned with any polling-command change.
+
+`contract.json` is the compatibility source of truth. After editing it, run
+`node scripts/generate-contract.mjs`; CI rejects stale generated QML constants.
+Use `./demo/run --verify` on an actual Omarchy desktop to exercise plugin
+loading, IPC, persistence permissions, and restart recovery.
 
 For live testing, copy the complete checkout to
 `~/.config/omarchy/plugins/com.stateset.icommerce`; Omarchy intentionally
@@ -53,4 +59,6 @@ Any new setting belongs in both `barWidget.defaults` and `barWidget.schema`.
 Add focused model or security regression tests for every behavior change.
 For a plugin-only release, bump `manifest.json` without changing
 `upstream-version.txt`. The synchronization workflow owns that compatibility
-marker when a newer iCommerce CLI release is packaged.
+marker when a newer iCommerce CLI release is packaged. Merge the release commit
+through the protected branch; successful `master` validation creates the
+annotated tag, and the workflow refuses to overwrite an existing tag.

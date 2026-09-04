@@ -1,0 +1,32 @@
+name: Live Omarchy desktop
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 7 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-omarchy-desktop
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    runs-on: [self-hosted, Linux, X64, omarchy]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate host and plugin
+        run: |
+          test -n "${WAYLAND_DISPLAY:-}"
+          test -n "${HYPRLAND_INSTANCE_SIGNATURE:-}"
+          command -v quickshell
+          command -v omarchy-shell
+          command -v stateset-omarchy
+          omarchy plugin validate .
+      - name: Exercise the live shell and restart recovery
+        run: ./demo/run --verify

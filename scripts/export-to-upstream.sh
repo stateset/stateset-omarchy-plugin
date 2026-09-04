@@ -11,13 +11,14 @@ fi
 plugin_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 plugin_version=$(node -p "require('$plugin_root/manifest.json').version")
 controller_version=$(tr -d '[:space:]' < "$plugin_root/upstream-version.txt")
+contract_version=$(node -p "require('$plugin_root/contract.json').controllerVersion")
 cli_version=$(node -p "require('$upstream/cli/package.json').version")
-if [[ $controller_version != "$cli_version" ]]; then
-  echo "controller mismatch: plugin expects CLI $controller_version, checkout is $cli_version" >&2
+if [[ $controller_version != "$cli_version" || $contract_version != "$cli_version" ]]; then
+  echo "controller mismatch: marker=$controller_version contract=$contract_version checkout=$cli_version" >&2
   exit 1
 fi
 
-for file in Model.js Panel.qml README.md Service.qml ServiceHost.js manifest.json; do
+for file in Model.js Panel.qml README.md Service.qml ServiceHost.js contract.json manifest.json; do
   cp "$plugin_root/$file" "$upstream/cli/omarchy/$file"
 done
 cp -a "$plugin_root/demo" "$upstream/cli/omarchy/"

@@ -90,6 +90,8 @@ TestCase {
   function test_first_snapshot_establishes_baseline_without_notification() {
     completeStatus({ failedPayments: 2 })
     compare(service.ready, true)
+    compare(service.refreshing, false)
+    compare(statusProcess().running, false)
     compare(service.hasAlertBaseline, true)
     compare(service.controllerVersion, "1.30.0")
     compare(service.capabilitiesKnown, true)

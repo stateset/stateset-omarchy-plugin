@@ -9,10 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = {"healthy", "attention", "empty", "partial", "governed", "unavailable"}
-CAPABILITIES = [
-    "status", "dashboard", "agent", "attention", "remediate", "backup", "doctor",
-    "agent-config", "mcp-service",
-]
+CONTRACT = json.loads((ROOT.parent / "contract.json").read_text())
 
 
 def fail(message, code=2):
@@ -59,8 +56,8 @@ def print_status():
     if name not in SCENARIOS:
         fail(f"Unknown demo scenario: {name}")
     payload = json.loads((ROOT / "fixtures" / f"{name}.json").read_text())
-    payload["controllerVersion"] = "1.30.0"
-    payload["capabilities"] = CAPABILITIES
+    payload["controllerVersion"] = CONTRACT["controllerVersion"]
+    payload["capabilities"] = CONTRACT["capabilities"]
     print(json.dumps(payload))
 
 

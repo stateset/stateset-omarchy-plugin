@@ -123,6 +123,11 @@ Item {
   function saveSnapshotState(value, savedAt) {
     var state = Model.createSnapshotState(value, savedAt)
     snapshotStateFile.setText(state === null ? "" : JSON.stringify(state, null, 2) + "\n")
+    secureStateFiles()
+  }
+
+  function secureStateFiles() {
+    statePermissionsTimer.restart()
   }
 
   function loadNotificationState(text) {
@@ -143,6 +148,7 @@ Item {
       lastNotificationAt: lastNotificationAt,
       pending: Model.normalizeNotificationDelta(pendingNotifications)
     }, null, 2) + "\n")
+    secureStateFiles()
   }
 
   function queueNotifications(previous, next, hasBaseline) {
@@ -396,10 +402,11 @@ Item {
     id: refreshTimer
     interval: root.refreshIntervalSec * 1000
     repeat: false
-    running: true
-    triggeredOnStart: true
+    running: false
     onTriggered: root.refresh()
   }
+
+  Component.onCompleted: root.refresh()
 
   Timer {
     interval: 300000
@@ -479,7 +486,11 @@ Item {
 
   Process {
     id: notificationStateDirProcess
-    command: ["/usr/bin/install", "-d", "-m", "700", root.notificationStateDir]
+    command: [
+      "/usr/bin/bash", "-c",
+      "set -e; /usr/bin/install -d -m 700 -- \"$1\"; /usr/bin/touch -- \"$2\" \"$3\"; /usr/bin/chmod 600 -- \"$2\" \"$3\"",
+      "stateset-state-init", root.notificationStateDir, root.notificationStatePath, root.snapshotStatePath
+    ]
     running: true
     onExited: function(exitCode) {
       if (exitCode === 0) {
@@ -489,6 +500,22 @@ Item {
         root.loadNotificationState("")
         root.loadSnapshotState("")
       }
+    }
+  }
+
+  Process {
+    id: statePermissionsProcess
+    command: ["/usr/bin/chmod", "600", "--", root.notificationStatePath, root.snapshotStatePath]
+    running: false
+  }
+
+  Timer {
+    id: statePermissionsTimer
+    interval: 50
+    repeat: false
+    onTriggered: {
+      if (statePermissionsProcess.running) restart()
+      else statePermissionsProcess.running = true
     }
   }
 

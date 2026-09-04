@@ -8,10 +8,14 @@ var MAX_JSON_FIELDS = 256
 var MAX_JSON_ARRAYS = 16
 var MAX_JSON_ARRAY_DEPTH = 3
 var MAX_JSON_ARRAY_SEPARATORS = 127
+// BEGIN GENERATED CONTRACT — run node scripts/generate-contract.mjs
 var STATUS_SCHEMA_VERSION = 1
 var CONTROLLER_SERIES = "1.30"
+var STATUS_CAPABILITIES = ["status","dashboard","agent","attention","remediate","backup","doctor","agent-config","mcp-service"]
 var SNAPSHOT_STATE_VERSION = 1
-var SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+var SNAPSHOT_MAX_AGE_MS = 86400000
+var SNAPSHOT_MAX_BYTES = 8192
+// END GENERATED CONTRACT
 
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : ({})
@@ -83,13 +87,11 @@ function normalizeUnavailableSignals(value) {
 
 function normalizeCapabilities(value) {
   if (!Array.isArray(value)) return []
-  var allowed = ["status", "dashboard", "agent", "attention", "remediate", "backup",
-    "doctor", "agent-config", "mcp-service"]
   var result = []
-  for (var index = 0; index < value.length && result.length < allowed.length; index += 1) {
+  for (var index = 0; index < value.length && result.length < STATUS_CAPABILITIES.length; index += 1) {
     if (typeof value[index] !== "string") continue
     var capability = value[index]
-    if (allowed.indexOf(capability) >= 0 && result.indexOf(capability) < 0) result.push(capability)
+    if (STATUS_CAPABILITIES.indexOf(capability) >= 0 && result.indexOf(capability) < 0) result.push(capability)
   }
   return result
 }
@@ -189,7 +191,7 @@ function createSnapshotState(value, savedAt) {
 
 function parseSnapshotState(text, now) {
   var fallback = { ok: false, savedAt: 0, snapshot: null }
-  if (typeof text !== "string" || text.trim() === "" || text.length > 8192) return fallback
+  if (typeof text !== "string" || text.trim() === "" || text.length > SNAPSHOT_MAX_BYTES) return fallback
   try {
     var source = record(JSON.parse(text))
     if (source.version !== SNAPSHOT_STATE_VERSION) return fallback
@@ -500,6 +502,7 @@ if (typeof module !== "undefined") {
     MAX_ERROR_CHARS: MAX_ERROR_CHARS,
     STATUS_SCHEMA_VERSION: STATUS_SCHEMA_VERSION,
     CONTROLLER_SERIES: CONTROLLER_SERIES,
+    STATUS_CAPABILITIES: STATUS_CAPABILITIES,
     SNAPSHOT_MAX_AGE_MS: SNAPSHOT_MAX_AGE_MS,
     appendBounded: appendBounded,
     formatBytes: formatBytes,

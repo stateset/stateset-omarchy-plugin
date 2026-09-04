@@ -35,6 +35,8 @@ panel loadable while a service is starting, without fabricating readiness.
   are coalesced and persisted in a user-only XDG state directory, honor Omarchy
   Do Not Disturb and per-signal settings, and deliver after the configured
   cooldown. Persisted versions and timestamps are bounded before scheduling.
+- Notification and last-good snapshot files are bootstrapped and re-secured at
+  mode `0600` after atomic writes; their parent directory remains `0700`.
 - Controller schema versions fail closed when newer than this plugin supports.
 - The last healthy normalized snapshot is persisted for at most 24 hours. A
   restored snapshot is visibly stale and cannot enable operator actions before
@@ -51,6 +53,9 @@ The canonical runtime source is `cli/omarchy` in `stateset-icommerce`. This
 standalone repository adds validation, a deterministic desktop demo, QML
 runtime fixtures, preview assets, and release
 automation. `scripts/export-to-upstream.sh` copies the runtime back to an
-upstream checkout and applies the companion schema patch; `UPSTREAM.md`
-documents that handoff. Scheduled release synchronization always opens a PR and
-must pass both repositories' integration checks before it can be reviewed.
+upstream checkout and applies the companion schema patch; `contract.json` is
+the machine-readable source for schema, controller, capability, and snapshot
+compatibility values. `UPSTREAM.md` documents that handoff. Scheduled release
+synchronization always opens a PR and must pass both repositories' integration
+checks before it can be reviewed. Release tags are created only after the
+protected `master` commit passes validation and an existing tag is never moved.

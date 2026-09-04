@@ -5,6 +5,9 @@ const fs = require('node:fs')
 const service = fs.readFileSync('Service.qml', 'utf8')
 const panel = fs.readFileSync('Panel.qml', 'utf8')
 const validationWorkflow = fs.readFileSync('.github/workflows/validate.yml', 'utf8')
+const desktopWorkflow = fs.readFileSync('.github/workflows/desktop-e2e.yml', 'utf8')
+const demo = fs.readFileSync('demo/run', 'utf8')
+const headlessE2e = fs.readFileSync('scripts/headless-e2e.sh', 'utf8')
 
 test('status polling has a fixed command boundary and bounded streams', () => {
   assert.match(service, /command: \["\/usr\/bin\/bash", "-c", "set -o pipefail; \{ \/usr\/bin\/timeout --signal=TERM --kill-after=1s 8s stateset-omarchy status --json; \} 2>&1 \| \/usr\/bin\/head -c 65537"\]/)
@@ -64,9 +67,29 @@ test('QML analysis fails on every locally analyzable warning', () => {
   assert.match(validationWorkflow, /qmltestrunner/)
 })
 
+test('a real Omarchy runner exercises live loading and restart recovery', () => {
+  assert.match(desktopWorkflow, /runs-on: \[self-hosted, Linux, X64, omarchy\]/)
+  assert.match(desktopWorkflow, /\.\/demo\/run --verify/)
+  assert.match(demo, /\.snapshotRestored == true/)
+  assert.match(demo, /\.failureKind == "controller-missing"/)
+  assert.match(demo, /stat -c '%a'/)
+})
+
+test('hosted CI loads the complete Omarchy shell under headless Wayland', () => {
+  assert.match(validationWorkflow, /headless-e2e:/)
+  assert.match(validationWorkflow, /quick shell|quickshell/i)
+  assert.match(validationWorkflow, /\.\/scripts\/headless-e2e\.sh/)
+  assert.match(headlessE2e, /weston --backend=headless-backend\.so/)
+  assert.match(headlessE2e, /quickshell -p "\$omarchy_path\/shell"/)
+  assert.match(headlessE2e, /\.controller\.capabilities == \$contract\.capabilities/)
+  assert.match(headlessE2e, /\.snapshotRestored == true/)
+})
+
 test('failed polling backs off and unknown MCP state cannot trigger a lifecycle command', () => {
   assert.match(service, /consecutiveFailures \+= 1/)
   assert.match(service, /Model\.retryIntervalSeconds\(refreshIntervalSec, consecutiveFailures\)/)
+  assert.match(service, /Component\.onCompleted: root\.refresh\(\)/)
+  assert.doesNotMatch(service, /id: refreshTimer[\s\S]{0,160}triggeredOnStart: true/)
   assert.match(panel, /if \(!service\.mcpStatusKnown\) service\.refreshService\(\)/)
   assert.match(panel, /root\.operational && !service\.mcpRefreshing/)
 })
@@ -90,7 +113,11 @@ test('MCP logs stay visible for recovery while mutations remain gated', () => {
 
 test('notification deltas are persisted and delivered after quiet mode', () => {
   assert.match(service, /notificationStatePath/)
-  assert.match(service, /"\/usr\/bin\/install", "-d", "-m", "700"/)
+  assert.match(service, /\/usr\/bin\/install -d -m 700/)
+  assert.match(service, /\/usr\/bin\/chmod 600/)
+  assert.match(service, /command: \["\/usr\/bin\/chmod", "600", "--"/)
+  assert.match(service, /id: statePermissionsTimer/)
+  assert.match(service, /if \(statePermissionsProcess\.running\) restart\(\)/)
   assert.match(service, /atomicWrites: true/)
   assert.match(service, /Model\.mergePendingNotifications/)
   assert.match(service, /onDoNotDisturbChanged/)

@@ -79,6 +79,8 @@ signals may notify. Notifications honor Omarchy's Do Not Disturb state, never
 fire on the first snapshot, and do not alert for routine pending-order growth.
 Suppressed increases are coalesced in XDG state, reconciled against the next
 healthy snapshot, and delivered when Do Not Disturb and the cooldown permit.
+Both state files are created in a user-only directory and explicitly maintained
+at mode `0600`, including after atomic replacement.
 Interactive controls expose accessible roles, names, descriptions, and press
 actions in addition to full keyboard navigation.
 The IPC surface is also scriptable:
@@ -163,6 +165,7 @@ that plugin updates remain reviewable. Validate a checkout with:
 
 ```bash
 node --test
+node scripts/generate-contract.mjs --check
 omarchy plugin validate .
 git diff --check
 ```
@@ -178,6 +181,8 @@ QML is generated from the upstream directory; repository-only tests, preview
 assets, handoff material, and workflows are preserved across release
 synchronization. See [ARCHITECTURE.md](ARCHITECTURE.md) for the runtime trust
 boundaries and [UPSTREAM.md](UPSTREAM.md) for the upstream handoff workflow.
+Compatibility metadata originates in `contract.json`; regenerate the QML
+constants with `node scripts/generate-contract.mjs` after changing it.
 
 ### Deterministic demo
 
@@ -199,3 +204,8 @@ data with `./demo/run attention`. Other states include `healthy`, `empty`,
 The harness backs up the installed plugin and shell configuration, uses a
 temporary XDG state directory, intercepts every StateSet command, and restores
 the original session on exit.
+
+On a real Omarchy session, `./demo/run --verify` performs a finite end-to-end
+check of plugin discovery, healthy IPC, controller capabilities, `0600` state
+files, shell restart, and stale-snapshot recovery. The dedicated desktop
+workflow runs this check on a self-hosted runner labeled `omarchy`.
