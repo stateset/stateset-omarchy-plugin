@@ -30,6 +30,8 @@ jobs:
       - name: Validate deterministic demo
         run: |
           bash -n demo/run scripts/export-to-upstream.sh
+          shellcheck demo/run scripts/export-to-upstream.sh scripts/headless-e2e.sh
+          node scripts/generate-contract.mjs --check
           ./demo/run --check
       - name: Check manifest and whitespace
         run: |
@@ -85,3 +87,24 @@ jobs:
               -input test/qml \
               -import test/qml/imports \
               -o -,txt
+
+  headless-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: archlinux:base
+    steps:
+      - name: Install shell runtime
+        run: pacman -Syu --noconfirm git jq python quickshell rsync weston
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check out pinned Omarchy
+        env:
+          OMARCHY_REVISION: f99d33a8ddee7b36509a71a6d20d5d23355ce8b1
+        run: |
+          git clone --filter=blob:none https://github.com/basecamp/omarchy.git "$RUNNER_TEMP/omarchy"
+          git -C "$RUNNER_TEMP/omarchy" checkout "$OMARCHY_REVISION"
+      - name: Exercise the complete shell under headless Wayland
+        env:
+          OMARCHY_PATH: ${{ runner.temp }}/omarchy
+        run: ./scripts/headless-e2e.sh

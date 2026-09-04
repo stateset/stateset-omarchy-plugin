@@ -1,20 +1,21 @@
 diff --git a/cli/src/omarchy.js b/cli/src/omarchy.js
-index ed1f94a..30d405e 100644
+index ed1f94a..d3a2705 100644
 --- a/cli/src/omarchy.js
 +++ b/cli/src/omarchy.js
 @@ -5,2 +5,3 @@ import { spawnSync } from 'node:child_process';
  import { fileURLToPath } from 'node:url';
 +import { CLI_VERSION } from './config.js';
  import { createCommerce } from './commerce.js';
-@@ -9,2 +10,5 @@ export const OMARCHY_PLUGIN_ID = 'com.stateset.icommerce';
+@@ -9,2 +10,6 @@ export const OMARCHY_PLUGIN_ID = 'com.stateset.icommerce';
  export const OMARCHY_CONFIG_DIRNAME = 'stateset-omarchy';
-+export const OMARCHY_CAPABILITIES = Object.freeze([
-+  'status', 'dashboard', 'agent', 'attention', 'remediate', 'backup', 'doctor', 'agent-config', 'mcp-service',
-+]);
++const OMARCHY_CONTRACT = JSON.parse(
++  fs.readFileSync(fileURLToPath(new URL('../omarchy/contract.json', import.meta.url)), 'utf8'),
++);
++export const OMARCHY_CAPABILITIES = Object.freeze([...OMARCHY_CONTRACT.capabilities]);
  export const OMARCHY_SERVICE_UNIT = 'stateset-icommerce-mcp.service';
-@@ -218,2 +222,5 @@ export async function getStoreStatus(options = {}) {
+@@ -218,2 +223,5 @@ export async function getStoreStatus(options = {}) {
    const base = {
-+    schemaVersion: 1,
++    schemaVersion: OMARCHY_CONTRACT.schemaVersion,
 +    controllerVersion: CLI_VERSION,
 +    capabilities: [...OMARCHY_CAPABILITIES],
      ok: false,

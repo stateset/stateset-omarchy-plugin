@@ -1,0 +1,49 @@
+name: Tag validated release
+
+on:
+  workflow_run:
+    workflows: [Validate Omarchy plugin]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Tag a release commit only after validation
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          subject=$(git show -s --format=%s "$RELEASE_SHA")
+          version=$(node -p "require('./manifest.json').version")
+          if [[ $subject != "chore: release plugin v$version" ]]; then
+            echo "Validated commit is not a release commit; nothing to tag."
+            exit 0
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          remote_target=$(git ls-remote origin "refs/tags/v$version^{}" | awk '{print $1}')
+          if [[ -z $remote_target ]]; then
+            remote_target=$(git ls-remote origin "refs/tags/v$version" | awk '{print $1}')
+          fi
+          if [[ $remote_target == "$RELEASE_SHA" ]]; then
+            echo "Tag v$version already points to the validated release."
+            exit 0
+          elif [[ -n $remote_target ]]; then
+            echo "Tag v$version already exists at another commit; refusing to move it." >&2
+            exit 1
+          fi
+          git config user.name "stateset-release-bot"
+          git config user.email "release-bot@stateset.com"
+          git tag -a "v$version" -m "StateSet Omarchy plugin v$version" "$RELEASE_SHA"
+          git push origin "refs/tags/v$version"

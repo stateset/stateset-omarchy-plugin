@@ -10,6 +10,7 @@ shell_config="$config_home/omarchy/shell.json"
 scenario="attention"
 capture=0
 check_only=0
+verify_only=0
 output=""
 runtime_dir=""
 installed_backup=""
@@ -19,10 +20,11 @@ shell_stopped=0
 cleanup_done=0
 
 usage() {
-  echo "Usage: ./demo/run [SCENARIO] [--screenshot] [--output PATH] [--check]"
+  echo "Usage: ./demo/run [SCENARIO] [--screenshot] [--output PATH] [--check] [--verify]"
   echo
   echo "Scenarios: healthy attention empty partial governed unavailable controller-missing timeout oversized"
   echo "--check validates every fictional controller response without touching the desktop."
+  echo "--verify runs a finite live-shell test, including restart and stale snapshot recovery."
 }
 
 while (( $# > 0 )); do
@@ -45,6 +47,10 @@ while (( $# > 0 )); do
       ;;
     --check)
       check_only=1
+      ;;
+    --verify)
+      verify_only=1
+      scenario=healthy
       ;;
     -h|--help)
       usage
@@ -70,7 +76,7 @@ check_fixtures() {
   local name result
   for name in healthy attention empty partial governed unavailable; do
     result=$(STATESET_DEMO_SCENARIO="$name" "$repo_root/demo/bin/stateset-omarchy" status --json)
-    python3 -c 'import json,sys; value=json.load(sys.stdin); assert value.get("schemaVersion") == 1; assert value.get("controllerVersion") == "1.30.0"; assert "status" in value.get("capabilities", [])' <<<"$result"
+    python3 -c 'import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); contract=json.loads((root / "contract.json").read_text()); value=json.load(sys.stdin); assert value.get("schemaVersion") == contract["schemaVersion"]; assert value.get("controllerVersion") == contract["controllerVersion"]; assert value.get("capabilities") == contract["capabilities"]' "$repo_root" <<<"$result"
   done
   STATESET_DEMO_SCENARIO=controller-missing \
     "$repo_root/demo/bin/stateset-omarchy" status --json >/dev/null 2>&1 && return 1
@@ -94,8 +100,7 @@ shell_instances() {
 }
 
 wait_for_shell() {
-  local attempt
-  for attempt in $(seq 1 150); do
+  for _ in $(seq 1 150); do
     if OMARCHY_PATH="$omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s \
         omarchy-shell shell ping >/dev/null 2>&1; then
       return 0
@@ -107,12 +112,23 @@ wait_for_shell() {
 }
 
 stop_shell() {
-  local attempt
-  for attempt in $(seq 1 5); do
+  for _ in $(seq 1 5); do
     (( $(shell_instances | jq 'length') == 0 )) && return 0
     timeout 5 quickshell kill -p "$omarchy_path/shell" --any-display >/dev/null 2>&1 || return 1
   done
   (( $(shell_instances | jq 'length') == 0 ))
+}
+
+launch_demo_shell() {
+  local demo_scenario=$1
+  PATH="$repo_root/demo/bin:$PATH" \
+  STATESET_DEMO_SCENARIO="$demo_scenario" \
+  STATESET_DEMO_STATE_DIR="$runtime_dir/state" \
+  XDG_STATE_HOME="$runtime_dir/xdg-state" \
+  OMARCHY_PATH="$omarchy_path" \
+  omarchy-launch-shell >/dev/null 2>&1 &
+  demo_launcher_pid=$!
+  wait_for_shell
 }
 
 cleanup() {
@@ -155,6 +171,7 @@ for command in jq omarchy-launch-shell omarchy-restart-shell omarchy-shell pytho
   require_command "$command"
 done
 (( capture )) && require_command grim
+(( verify_only )) && require_command stat
 [[ -f $shell_config ]] || { echo "Missing Omarchy shell configuration: $shell_config" >&2; exit 1; }
 [[ ! -L $shell_config ]] || { echo "Refusing to modify a symlinked shell configuration." >&2; exit 1; }
 
@@ -180,31 +197,65 @@ mv "$temporary_config" "$shell_config"
 
 shell_stopped=1
 stop_shell
-PATH="$repo_root/demo/bin:$PATH" \
-STATESET_DEMO_SCENARIO="$scenario" \
-STATESET_DEMO_STATE_DIR="$runtime_dir/state" \
-XDG_STATE_HOME="$runtime_dir/xdg-state" \
-OMARCHY_PATH="$omarchy_path" \
-omarchy-launch-shell >/dev/null 2>&1 &
-demo_launcher_pid=$!
-wait_for_shell
+launch_demo_shell "$scenario"
 
 omarchy-shell com.stateset.icommerce refresh >/dev/null
 status=""
-for attempt in $(seq 1 180); do
+for _ in $(seq 1 180); do
   status=$(omarchy-shell com.stateset.icommerce status 2>/dev/null || true)
   if [[ -n $status ]] && jq -e '.refreshing == false' >/dev/null 2>&1 <<<"$status"; then
     break
   fi
   sleep 0.1
 done
-[[ -n $status ]] && jq -e '.refreshing == false' >/dev/null 2>&1 <<<"$status" || {
+if [[ -z $status ]] || ! jq -e '.refreshing == false' >/dev/null 2>&1 <<<"$status"; then
   echo "Demo scenario did not settle: $scenario" >&2
   exit 1
-}
+fi
 
 omarchy-shell com.stateset.icommerce open >/dev/null
 sleep 1
+
+if (( verify_only )); then
+  contract=$(<"$repo_root/contract.json")
+  jq -e --argjson contract "$contract" '
+    .ready == true and .configured == true and .stale == false
+    and .controller.version == $contract.controllerVersion
+    and .controller.capabilitiesKnown == true
+    and .controller.capabilities == $contract.capabilities
+    and .counts.orders == 248
+  ' >/dev/null <<<"$status"
+  omarchy-shell com.stateset.icommerce close >/dev/null
+
+  state_dir="$runtime_dir/xdg-state/stateset-icommerce"
+  for state_file in notifications.json snapshot.json; do
+    [[ -f $state_dir/$state_file ]] || { echo "Missing persisted state: $state_file" >&2; exit 1; }
+    [[ $(stat -c '%a' "$state_dir/$state_file") == "600" ]] || {
+      echo "Unsafe permissions on persisted state: $state_file" >&2
+      exit 1
+    }
+  done
+
+  stop_shell
+  wait "$demo_launcher_pid" 2>/dev/null || true
+  demo_launcher_pid=""
+  launch_demo_shell controller-missing
+  restored=""
+  for _ in $(seq 1 180); do
+    restored=$(omarchy-shell com.stateset.icommerce status 2>/dev/null || true)
+    if [[ -n $restored ]] && jq -e '.refreshing == false and .snapshotRestored == true' >/dev/null 2>&1 <<<"$restored"; then
+      break
+    fi
+    sleep 0.1
+  done
+  jq -e '
+    .ready == false and .stale == true and .hasSnapshot == true
+    and .snapshotRestored == true and .failureKind == "controller-missing"
+    and .counts.orders == 248
+  ' >/dev/null <<<"$restored"
+  echo "StateSet live Omarchy verification passed"
+  exit 0
+fi
 
 if (( capture )); then
   [[ -n $output ]] || output="${XDG_PICTURES_DIR:-$HOME/Pictures}/stateset-${scenario}-$(date +'%Y-%m-%d_%H-%M-%S').png"
