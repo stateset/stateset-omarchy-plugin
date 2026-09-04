@@ -25,6 +25,9 @@ test('demo scenarios follow the production status contract', () => {
     assert.equal(result.status, 0, result.stderr)
     const status = Model.parseStatusJson(result.stdout)
     assert.equal(status.schemaVersion, 1)
+    assert.equal(status.controllerVersion, '1.30.0')
+    assert.equal(status.capabilitiesKnown, true)
+    assert.ok(status.capabilities.includes('mcp-service'))
     assert.equal(status.ok, scenario !== 'unavailable')
   }
 })

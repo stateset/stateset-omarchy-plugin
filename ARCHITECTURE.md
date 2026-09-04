@@ -9,8 +9,10 @@ controller boundary.
    fixed, time-limited command and caps output before it reaches QML.
 2. `Model.js` validates the JSON envelope, accepts the current status schema
    (plus legacy unversioned responses), normalizes every displayed field, and
-   classifies failures. Repeated failures use bounded exponential backoff while
-   preserving immediate operator-triggered refreshes.
+   classifies failures. Optional controller version and capability metadata is
+   allowlisted; incompatible reported versions fail closed. Repeated failures
+   use bounded exponential backoff while preserving immediate operator-triggered
+   refreshes.
 3. `Panel.qml` renders the shared service snapshot. It can retain stale data for
    context, but never reports stale data as healthy or enables store actions.
 4. Operator actions resolve through an exact action-to-command map and open in
@@ -34,6 +36,9 @@ panel loadable while a service is starting, without fabricating readiness.
   Do Not Disturb and per-signal settings, and deliver after the configured
   cooldown. Persisted versions and timestamps are bounded before scheduling.
 - Controller schema versions fail closed when newer than this plugin supports.
+- The last healthy normalized snapshot is persisted for at most 24 hours. A
+  restored snapshot is visibly stale and cannot enable operator actions before
+  a successful live probe.
 - MCP lifecycle mutations use a direct allowlisted process with bounded output,
   a stable timeout boundary, bounded output, inline results, and confirmation
   for stop/restart. Contradictory service responses fail closed. Interactive

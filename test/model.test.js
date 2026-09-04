@@ -22,6 +22,9 @@ test('normalizes a valid status without trusting extra fields', () => {
     dbPath: '/tmp/store.db',
     mode: 'governed-apply',
     message: 'Store ready',
+    controllerVersion: '',
+    capabilitiesKnown: false,
+    capabilities: [],
     sizeBytes: 1536,
     counts: { orders: 12, customers: 3, products: 0, returns: 0, payments: 0 },
     alerts: { pendingOrders: 2, failedPayments: 1, pendingReturns: 0, lowStock: 4, total: 7 },
@@ -48,6 +51,26 @@ test('normalizes partial operational signal health to known unique values', () =
 test('accepts the current status schema and rejects incompatible versions', () => {
   assert.equal(Model.parseStatusJson('{"schemaVersion":1,"ok":true}').schemaVersion, 1)
   assert.throws(() => Model.parseStatusJson('{"schemaVersion":2,"ok":true}'), /Unsupported status schema/)
+  assert.equal(Model.controllerVersionCompatible('1.30.0'), true)
+  assert.equal(Model.controllerVersionCompatible('1.30.9-beta.1'), true)
+  assert.equal(Model.controllerVersionCompatible('1.31.0'), false)
+  assert.equal(Model.controllerVersionCompatible('garbage'), false)
+  assert.throws(
+    () => Model.parseStatusJson('{"schemaVersion":1,"controllerVersion":"2.0.0","ok":true}'),
+    /Unsupported controller version/
+  )
+})
+
+test('normalizes an explicit controller capability handshake', () => {
+  const status = Model.parseStatusJson(JSON.stringify({
+    schemaVersion: 1,
+    controllerVersion: '1.30.4',
+    capabilities: ['status', 'mcp-service', 'unknown', 'status'],
+    ok: true
+  }))
+  assert.equal(status.controllerVersion, '1.30.4')
+  assert.equal(status.capabilitiesKnown, true)
+  assert.deepEqual(status.capabilities, ['status', 'mcp-service'])
 })
 
 test('normalizes MCP service status', () => {
@@ -200,6 +223,33 @@ test('loads persisted notification state defensively', () => {
   })
   assert.equal(Model.parseNotificationState('{bad').lastNotificationAt, 0)
   assert.equal(Model.parseNotificationState('{"version":2,"lastNotificationAt":500}').lastNotificationAt, 0)
+})
+
+test('persists only fresh normalized healthy snapshots', () => {
+  const now = Date.parse('2026-09-04T12:00:00Z')
+  const state = Model.createSnapshotState({
+    schemaVersion: 1,
+    controllerVersion: '1.30.0',
+    capabilities: ['status', 'backup', 'untrusted'],
+    ok: true,
+    configured: true,
+    dbPath: '/tmp/store.db',
+    counts: { orders: 12.9 },
+    alerts: { failedPayments: 2 },
+    ignored: 'secret'
+  }, now)
+  assert.equal(state.version, 1)
+  assert.equal(state.snapshot.counts.orders, 12)
+  assert.deepEqual(state.snapshot.capabilities, ['status', 'backup'])
+  assert.equal('ignored' in state.snapshot, false)
+
+  const restored = Model.parseSnapshotState(JSON.stringify(state), now + 1000)
+  assert.equal(restored.ok, true)
+  assert.equal(restored.snapshot.dbPath, '/tmp/store.db')
+  assert.equal(restored.snapshot.alerts.failedPayments, 2)
+  assert.equal(Model.parseSnapshotState(JSON.stringify(state), now + Model.SNAPSHOT_MAX_AGE_MS + 1).ok, false)
+  assert.equal(Model.parseSnapshotState(JSON.stringify({ ...state, version: 2 }), now).ok, false)
+  assert.equal(Model.createSnapshotState({ ok: false, configured: true }, now), null)
 })
 
 test('builds only allowlisted direct MCP lifecycle commands', () => {

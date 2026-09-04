@@ -39,6 +39,23 @@ test('IPC exposes standard panel aliases and explicit stale-state metadata', () 
   assert.match(panel, /known: service\.mcpStatusKnown/)
   assert.match(panel, /effectiveRefreshIntervalSec: Model\.retryIntervalSeconds/)
   assert.match(panel, /notifications: \{ pending: Model\.normalizeNotificationDelta/)
+  assert.match(panel, /snapshotRestored: service\.snapshotRestored/)
+  assert.match(panel, /capabilitiesKnown: service\.capabilitiesKnown/)
+})
+
+test('last-good snapshots are bounded, normalized, and never restore readiness', () => {
+  assert.match(service, /snapshotStatePath/)
+  assert.match(service, /Model\.parseSnapshotState\(text, Date\.now\(\)\)/)
+  assert.match(service, /ready = false/)
+  assert.match(service, /snapshotRestored = true/)
+  assert.match(service, /Model\.createSnapshotState\(value, savedAt\)/)
+})
+
+test('explicit controller capabilities gate every operator action', () => {
+  for (const capability of ['attention', 'remediate', 'dashboard', 'agent', 'backup', 'doctor', 'agent-config', 'mcp-service']) {
+    assert.match(panel, new RegExp(`supportsCapability\\("${capability}"\\)`))
+  }
+  assert.match(service, /!supportsCapability\("mcp-service"\)/)
 })
 
 test('QML analysis fails on every locally analyzable warning', () => {
@@ -66,9 +83,9 @@ test('MCP lifecycle actions use a bounded direct process instead of a shell', ()
 })
 
 test('MCP logs stay visible for recovery while mutations remain gated', () => {
-  assert.match(panel, /visible: service\.mcpStatusKnown && service\.mcpInstalled/)
+  assert.match(panel, /visible: service\.mcpStatusKnown && service\.mcpInstalled\s+&& service\.supportsCapability\("mcp-service"\)/)
   assert.match(panel, /enabled: root\.operational && !service\.mcpRefreshing && !service\.actionRunning/)
-  assert.match(panel, /if \(service\.mcpStatusKnown && service\.mcpInstalled\) indexes\.push\(9\)/)
+  assert.match(panel, /if \(service\.mcpStatusKnown && service\.mcpInstalled\s+&& service\.supportsCapability\("mcp-service"\)\) indexes\.push\(9\)/)
 })
 
 test('notification deltas are persisted and delivered after quiet mode', () => {

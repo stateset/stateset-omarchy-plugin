@@ -26,8 +26,12 @@ Panel {
     property string lastError: ""
     property string failureKind: ""
     property int statusSchemaVersion: 0
+    property string controllerVersion: ""
+    property bool capabilitiesKnown: false
+    property var capabilities: []
     property double sizeBytes: 0
     property bool hasSnapshot: false
+    property bool snapshotRestored: false
     property date lastUpdated: new Date(0)
     property date lastAttempt: new Date(0)
     property date nextRefreshAt: new Date(0)
@@ -53,6 +57,7 @@ Panel {
     function refreshIfStale() {}
     function refreshService() {}
     function runServiceAction(action) { return false }
+    function supportsCapability(capability) { return true }
   }
 
   readonly property var hostedService: {
@@ -102,6 +107,7 @@ Panel {
   }
 
   function mcpToggleAction() {
+    if (!service.supportsCapability("mcp-service")) return ""
     if (!service.mcpStatusKnown) return ""
     if (!service.mcpInstalled) return "install"
     return service.mcpActive ? "stop" : "start"
@@ -126,12 +132,19 @@ Panel {
 
   function availableActions() {
     var indexes = []
-    if (operational && (service.alerts.total || 0) > 0) indexes.push(0, 1)
-    if (operational) indexes.push(2, 3, 4)
-    if ((service.ready || !service.refreshing) && service.failureKind !== "controller-missing") indexes.push(5)
-    if (operational) indexes.push(6, 7)
-    if (operational && service.mcpStatusKnown && service.mcpInstalled) indexes.push(8)
-    if (service.mcpStatusKnown && service.mcpInstalled) indexes.push(9)
+    if (operational && (service.alerts.total || 0) > 0 && service.supportsCapability("attention")) indexes.push(0)
+    if (operational && (service.alerts.total || 0) > 0 && service.supportsCapability("remediate")) indexes.push(1)
+    if (operational && service.supportsCapability("dashboard")) indexes.push(2)
+    if (operational && service.supportsCapability("agent")) indexes.push(3)
+    if (operational && service.supportsCapability("backup")) indexes.push(4)
+    if ((service.ready || !service.refreshing) && service.failureKind !== "controller-missing"
+        && service.supportsCapability("doctor")) indexes.push(5)
+    if (operational && service.supportsCapability("agent-config")) indexes.push(6)
+    if (operational && service.supportsCapability("mcp-service")) indexes.push(7)
+    if (operational && service.mcpStatusKnown && service.mcpInstalled
+        && service.supportsCapability("mcp-service")) indexes.push(8)
+    if (service.mcpStatusKnown && service.mcpInstalled
+        && service.supportsCapability("mcp-service")) indexes.push(9)
     return indexes
   }
 
@@ -240,7 +253,13 @@ Panel {
         refreshing: service.refreshing,
         failureKind: service.failureKind,
         statusSchemaVersion: service.statusSchemaVersion,
+        controller: {
+          version: service.controllerVersion,
+          capabilitiesKnown: service.capabilitiesKnown,
+          capabilities: service.capabilities
+        },
         hasSnapshot: service.hasSnapshot,
+        snapshotRestored: service.snapshotRestored,
         stale: !service.ready && service.hasSnapshot,
         mode: service.mode,
         dbPath: service.dbPath,
@@ -433,6 +452,7 @@ Panel {
               background: Color.popups.background
               accent: root.urgent
               fontFamily: root.fontFamily
+              enabled: service.supportsCapability("doctor")
               hasCursor: root.cursorActive && root.actionIndex === 5
               Accessible.role: Accessible.Button
               Accessible.name: "Doctor"
@@ -545,7 +565,7 @@ Panel {
                 background: Color.popups.background
                 accent: Color.accent
                 fontFamily: root.fontFamily
-                enabled: root.operational
+                enabled: root.operational && service.supportsCapability("attention")
                 hasCursor: root.cursorActive && root.actionIndex === 0
                 Accessible.role: Accessible.Button
                 Accessible.name: "Review attention items"
@@ -562,7 +582,7 @@ Panel {
                 background: Color.popups.background
                 accent: root.urgent
                 fontFamily: root.fontFamily
-                enabled: root.operational
+                enabled: root.operational && service.supportsCapability("remediate")
                 hasCursor: root.cursorActive && root.actionIndex === 1
                 Accessible.role: Accessible.Button
                 Accessible.name: "Resolve attention items"
@@ -636,7 +656,11 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: !service.ready ? "STATUS UNAVAILABLE · ACTIONS PAUSED" : service.mode === "preview" ? "PREVIEW ONLY · WRITES REQUIRE EXPLICIT APPLY" : "GOVERNED APPLY · OPERATOR POLICY ACTIVE"
+          text: !service.ready && service.hasSnapshot
+            ? (service.snapshotRestored ? "RESTORED SNAPSHOT · REFRESHING · STORE ACTIONS PAUSED" : "STALE SNAPSHOT · STORE ACTIONS PAUSED")
+            : !service.ready ? "STATUS UNAVAILABLE · STORE ACTIONS PAUSED"
+            : service.mode === "preview" ? "PREVIEW ONLY · WRITES REQUIRE EXPLICIT APPLY"
+            : "GOVERNED APPLY · OPERATOR POLICY ACTIVE"
           textFormat: Text.PlainText
           color: !service.ready || service.mode !== "preview" ? root.urgent : Color.accent
           font.family: root.fontFamily
@@ -659,7 +683,7 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && service.supportsCapability("dashboard")
             hasCursor: root.cursorActive && root.actionIndex === 2
             Accessible.role: Accessible.Button
             Accessible.name: "Dashboard"
@@ -677,7 +701,7 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && service.supportsCapability("agent")
             hasCursor: root.cursorActive && root.actionIndex === 3
             Accessible.role: Accessible.Button
             Accessible.name: "Agent"
@@ -695,7 +719,7 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && service.supportsCapability("backup")
             hasCursor: root.cursorActive && root.actionIndex === 4
             Accessible.role: Accessible.Button
             Accessible.name: "Backup"
@@ -719,6 +743,7 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
+            enabled: service.supportsCapability("doctor")
             hasCursor: root.cursorActive && root.actionIndex === 5
             Accessible.role: Accessible.Button
             Accessible.name: "Doctor"
@@ -736,7 +761,7 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational
+            enabled: root.operational && service.supportsCapability("agent-config")
             hasCursor: root.cursorActive && root.actionIndex === 6
             Accessible.role: Accessible.Button
             Accessible.name: "Configure agents"
@@ -760,7 +785,8 @@ Panel {
             background: Color.popups.background
             accent: Color.accent
             fontFamily: root.fontFamily
-            enabled: root.operational && !service.mcpRefreshing && !service.actionRunning
+            enabled: root.operational && service.supportsCapability("mcp-service")
+              && !service.mcpRefreshing && !service.actionRunning
             hasCursor: root.cursorActive && root.actionIndex === 7
             Accessible.role: Accessible.Button
             Accessible.name: text
@@ -773,6 +799,7 @@ Panel {
 
         RowLayout {
           visible: service.mcpStatusKnown && service.mcpInstalled
+            && service.supportsCapability("mcp-service")
           Layout.fillWidth: true
           spacing: Style.space(8)
           Button {

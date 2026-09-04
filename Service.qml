@@ -17,6 +17,9 @@ Item {
   property string lastError: ""
   property string failureKind: ""
   property int statusSchemaVersion: 0
+  property string controllerVersion: ""
+  property bool capabilitiesKnown: false
+  property var capabilities: []
   property double sizeBytes: 0
   property var counts: ({ orders: 0, customers: 0, products: 0, returns: 0, payments: 0 })
   property var alerts: ({ pendingOrders: 0, failedPayments: 0, pendingReturns: 0, lowStock: 0, total: 0 })
@@ -24,6 +27,8 @@ Item {
   property var unavailableSignals: []
   property bool hasAlertBaseline: false
   property bool hasSnapshot: false
+  property bool snapshotStateLoaded: false
+  property bool snapshotRestored: false
   property date lastUpdated: new Date(0)
   property date lastAttempt: new Date(0)
   property date nextRefreshAt: new Date(0)
@@ -57,6 +62,7 @@ Item {
     || (Quickshell.env("HOME") + "/.local/state")
   readonly property string notificationStateDir: stateHome + "/stateset-icommerce"
   readonly property string notificationStatePath: notificationStateDir + "/notifications.json"
+  readonly property string snapshotStatePath: notificationStateDir + "/snapshot.json"
 
   readonly property int refreshIntervalSec: {
     var value = parseInt(String(settings && settings.refreshIntervalSec || 120), 10)
@@ -80,6 +86,43 @@ Item {
       lowStock: settings && settings.notifyLowStock !== false,
       pendingReturns: settings && settings.notifyPendingReturns !== false
     }
+  }
+
+  function supportsCapability(capability) {
+    return !capabilitiesKnown || capabilities.indexOf(capability) >= 0
+  }
+
+  function loadSnapshotState(text) {
+    if (snapshotStateLoaded) return
+    snapshotStateLoaded = true
+    if (hasSnapshot) return
+    var state = Model.parseSnapshotState(text, Date.now())
+    if (!state.ok) return
+    var value = state.snapshot
+    ready = false
+    configured = value.configured
+    dbPath = value.dbPath
+    mode = value.mode
+    message = value.message
+    statusSchemaVersion = value.schemaVersion
+    controllerVersion = value.controllerVersion
+    capabilitiesKnown = value.capabilitiesKnown
+    capabilities = value.capabilities
+    sizeBytes = value.sizeBytes
+    counts = value.counts
+    alerts = value.alerts
+    signalsComplete = value.signalsComplete
+    unavailableSignals = value.unavailableSignals
+    hasAlertBaseline = true
+    hasSnapshot = true
+    snapshotRestored = true
+    lastUpdated = new Date(state.savedAt)
+    failureKind = "restored-snapshot"
+  }
+
+  function saveSnapshotState(value, savedAt) {
+    var state = Model.createSnapshotState(value, savedAt)
+    snapshotStateFile.setText(state === null ? "" : JSON.stringify(state, null, 2) + "\n")
   }
 
   function loadNotificationState(text) {
@@ -191,7 +234,7 @@ Item {
   }
 
   function refreshService() {
-    if (serviceStatusProcess.running || actionRunning) return
+    if (serviceStatusProcess.running || actionRunning || !supportsCapability("mcp-service")) return
     _serviceOutput = ""
     _serviceTruncated = false
     mcpRefreshing = true
@@ -231,9 +274,11 @@ Item {
 
   function runServiceAction(action) {
     var command = Model.serviceActionCommand(action)
-    if (actionRunning || mcpRefreshing || command.length === 0) return false
-    if (action === "install" && (!ready || !configured)) {
-      actionError = "Configure a readable store before installing MCP"
+    if (actionRunning || mcpRefreshing || command.length === 0 || !supportsCapability("mcp-service")) return false
+    if (!ready || !configured) {
+      actionError = action === "install"
+        ? "Configure a readable store before installing MCP"
+        : "Refresh store status before managing MCP"
       actionStatus = actionError
       actionClearTimer.restart()
       return false
@@ -315,6 +360,9 @@ Item {
       var value = Model.parseStatusJson(_stdout)
       ready = value.ok
       statusSchemaVersion = value.schemaVersion
+      controllerVersion = value.controllerVersion
+      capabilitiesKnown = value.capabilitiesKnown
+      capabilities = value.capabilities
       configured = value.configured
       dbPath = value.dbPath
       mode = value.mode
@@ -328,15 +376,18 @@ Item {
       alerts = nextAlerts
       hasAlertBaseline = true
       hasSnapshot = true
+      snapshotRestored = false
       failureKind = ready ? "" : (configured ? "store-unavailable" : "not-configured")
       lastError = ready ? "" : message
       lastUpdated = new Date()
+      saveSnapshotState(value, lastUpdated.getTime())
       consecutiveFailures = ready ? 0 : consecutiveFailures + 1
       scheduleRefresh()
       refreshService()
     } catch (error) {
       var incompatible = String(error).indexOf("Unsupported status schema version") >= 0
-      fail(incompatible ? "StateSet controller uses an unsupported status schema" : "Invalid response from stateset-omarchy",
+        || String(error).indexOf("Unsupported controller version") >= 0
+      fail(incompatible ? "StateSet controller uses an unsupported status contract" : "Invalid response from stateset-omarchy",
         incompatible ? "incompatible-controller" : "invalid-response")
     }
   }
@@ -431,8 +482,13 @@ Item {
     command: ["/usr/bin/install", "-d", "-m", "700", root.notificationStateDir]
     running: true
     onExited: function(exitCode) {
-      if (exitCode === 0) notificationStateFile.reload()
-      else root.loadNotificationState("")
+      if (exitCode === 0) {
+        notificationStateFile.reload()
+        snapshotStateFile.reload()
+      } else {
+        root.loadNotificationState("")
+        root.loadSnapshotState("")
+      }
     }
   }
 
@@ -444,6 +500,16 @@ Item {
     printErrors: false
     onLoaded: root.loadNotificationState(text())
     onLoadFailed: root.loadNotificationState("")
+  }
+
+  FileView {
+    id: snapshotStateFile
+    path: root.snapshotStatePath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadSnapshotState(text())
+    onLoadFailed: root.loadSnapshotState("")
   }
 
   Timer {

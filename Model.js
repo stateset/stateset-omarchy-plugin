@@ -9,6 +9,9 @@ var MAX_JSON_ARRAYS = 16
 var MAX_JSON_ARRAY_DEPTH = 3
 var MAX_JSON_ARRAY_SEPARATORS = 127
 var STATUS_SCHEMA_VERSION = 1
+var CONTROLLER_SERIES = "1.30"
+var SNAPSHOT_STATE_VERSION = 1
+var SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : ({})
@@ -78,6 +81,26 @@ function normalizeUnavailableSignals(value) {
   return result
 }
 
+function normalizeCapabilities(value) {
+  if (!Array.isArray(value)) return []
+  var allowed = ["status", "dashboard", "agent", "attention", "remediate", "backup",
+    "doctor", "agent-config", "mcp-service"]
+  var result = []
+  for (var index = 0; index < value.length && result.length < allowed.length; index += 1) {
+    if (typeof value[index] !== "string") continue
+    var capability = value[index]
+    if (allowed.indexOf(capability) >= 0 && result.indexOf(capability) < 0) result.push(capability)
+  }
+  return result
+}
+
+function controllerVersionCompatible(value) {
+  if (value === undefined || value === null || value === "") return true
+  if (typeof value !== "string") return false
+  var match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/)
+  return match !== null && match[1] + "." + match[2] === CONTROLLER_SERIES
+}
+
 function validateJsonEnvelope(text) {
   if (typeof text !== "string" || text.length === 0 || text.length > MAX_OUTPUT_CHARS) {
     throw new Error("Status response size is invalid")
@@ -133,8 +156,12 @@ function normalizeStatus(value) {
   if (source.schemaVersion !== undefined && source.schemaVersion !== STATUS_SCHEMA_VERSION) {
     throw new Error("Unsupported status schema version")
   }
+  if (!controllerVersionCompatible(source.controllerVersion)) {
+    throw new Error("Unsupported controller version")
+  }
   var ready = source.ok === true
   var unavailableSignals = normalizeUnavailableSignals(source.unavailableSignals)
+  var capabilitiesKnown = Array.isArray(source.capabilities)
   return {
     ok: ready,
     schemaVersion: source.schemaVersion === STATUS_SCHEMA_VERSION ? STATUS_SCHEMA_VERSION : 0,
@@ -142,11 +169,40 @@ function normalizeStatus(value) {
     dbPath: safeText(source.dbPath, MAX_PATH_CHARS, ""),
     mode: source.mode === "governed-apply" ? "governed-apply" : "preview",
     message: safeText(source.message, MAX_TEXT_CHARS, ready ? "Store ready" : "Store unavailable"),
+    controllerVersion: safeText(source.controllerVersion, 64, ""),
+    capabilitiesKnown: capabilitiesKnown,
+    capabilities: normalizeCapabilities(source.capabilities),
     sizeBytes: boundedBytes(source.sizeBytes),
     counts: normalizeCounts(source.counts),
     alerts: normalizeAlerts(source.alerts),
     signalsComplete: source.signalsComplete !== false && unavailableSignals.length === 0,
     unavailableSignals: unavailableSignals
+  }
+}
+
+function createSnapshotState(value, savedAt) {
+  var snapshot = normalizeStatus(value)
+  var timestamp = Number(savedAt)
+  if (!snapshot.ok || !snapshot.configured || !isFinite(timestamp) || timestamp <= 0) return null
+  return { version: SNAPSHOT_STATE_VERSION, savedAt: timestamp, snapshot: snapshot }
+}
+
+function parseSnapshotState(text, now) {
+  var fallback = { ok: false, savedAt: 0, snapshot: null }
+  if (typeof text !== "string" || text.trim() === "" || text.length > 8192) return fallback
+  try {
+    var source = record(JSON.parse(text))
+    if (source.version !== SNAPSHOT_STATE_VERSION) return fallback
+    var savedAt = Number(source.savedAt)
+    var current = Number(now)
+    if (!isFinite(current)) current = Date.now()
+    if (!isFinite(savedAt) || savedAt <= 0 || savedAt > current + 300000
+        || current - savedAt > SNAPSHOT_MAX_AGE_MS) return fallback
+    var snapshot = normalizeStatus(source.snapshot)
+    if (!snapshot.ok || !snapshot.configured) return fallback
+    return { ok: true, savedAt: savedAt, snapshot: snapshot }
+  } catch (error) {
+    return fallback
   }
 }
 
@@ -443,6 +499,8 @@ if (typeof module !== "undefined") {
     MAX_OUTPUT_CHARS: MAX_OUTPUT_CHARS,
     MAX_ERROR_CHARS: MAX_ERROR_CHARS,
     STATUS_SCHEMA_VERSION: STATUS_SCHEMA_VERSION,
+    CONTROLLER_SERIES: CONTROLLER_SERIES,
+    SNAPSHOT_MAX_AGE_MS: SNAPSHOT_MAX_AGE_MS,
     appendBounded: appendBounded,
     formatBytes: formatBytes,
     formatCount: formatCount,
@@ -451,15 +509,19 @@ if (typeof module !== "undefined") {
     filterNotificationDelta: filterNotificationDelta,
     normalizeAlerts: normalizeAlerts,
     normalizeCounts: normalizeCounts,
+    normalizeCapabilities: normalizeCapabilities,
     normalizeNotificationDelta: normalizeNotificationDelta,
     normalizeStatus: normalizeStatus,
     normalizeServiceStatus: normalizeServiceStatus,
     normalizeUnavailableSignals: normalizeUnavailableSignals,
     parseStatusJson: parseStatusJson,
+    parseSnapshotState: parseSnapshotState,
     parseServiceStatusJson: parseServiceStatusJson,
     serviceActionCommand: serviceActionCommand,
     serviceActionLabel: serviceActionLabel,
     classifyFailure: classifyFailure,
+    controllerVersionCompatible: controllerVersionCompatible,
+    createSnapshotState: createSnapshotState,
     safeText: safeText,
     attentionSummary: attentionSummary,
     attentionHeadline: attentionHeadline,

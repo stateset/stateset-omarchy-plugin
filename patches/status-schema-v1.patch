@@ -1,29 +1,38 @@
 diff --git a/cli/src/omarchy.js b/cli/src/omarchy.js
+index ed1f94a..30d405e 100644
 --- a/cli/src/omarchy.js
 +++ b/cli/src/omarchy.js
-@@ -216,6 +216,7 @@ export async function getStoreStatus(options = {}) {
-     Boolean(dbPath) &&
-     path.resolve(config.dbPath) === path.resolve(dbPath);
+@@ -5,2 +5,3 @@ import { spawnSync } from 'node:child_process';
+ import { fileURLToPath } from 'node:url';
++import { CLI_VERSION } from './config.js';
+ import { createCommerce } from './commerce.js';
+@@ -9,2 +10,5 @@ export const OMARCHY_PLUGIN_ID = 'com.stateset.icommerce';
+ export const OMARCHY_CONFIG_DIRNAME = 'stateset-omarchy';
++export const OMARCHY_CAPABILITIES = Object.freeze([
++  'status', 'dashboard', 'agent', 'attention', 'remediate', 'backup', 'doctor', 'agent-config', 'mcp-service',
++]);
+ export const OMARCHY_SERVICE_UNIT = 'stateset-icommerce-mcp.service';
+@@ -218,2 +222,5 @@ export async function getStoreStatus(options = {}) {
    const base = {
 +    schemaVersion: 1,
++    controllerVersion: CLI_VERSION,
++    capabilities: [...OMARCHY_CAPABILITIES],
      ok: false,
-     configured: Boolean(dbPath),
-     dbPath,
 diff --git a/cli/test/unit/omarchy.test.js b/cli/test/unit/omarchy.test.js
+index faebccc..3b21bc1 100644
 --- a/cli/test/unit/omarchy.test.js
 +++ b/cli/test/unit/omarchy.test.js
-@@ -63,5 +63,6 @@ describe('Omarchy integration', () => {
-     const store = path.join(projectDir, 'missing.db');
+@@ -65,2 +65,5 @@ describe('Omarchy integration', () => {
      const status = await getStoreStatus({ dbPath: store, homeDir });
 +    assert.equal(status.schemaVersion, 1);
++    assert.match(status.controllerVersion, /^\d+\.\d+\.\d+/);
++    assert.ok(status.capabilities.includes('mcp-service'));
      assert.equal(status.ok, false);
-     assert.equal(status.configured, true);
-     assert.match(status.message, /does not exist/);
 diff --git a/scripts/ci/check_omarchy_integration.mjs b/scripts/ci/check_omarchy_integration.mjs
+index f9f3d48..2c6ded1 100644
 --- a/scripts/ci/check_omarchy_integration.mjs
 +++ b/scripts/ci/check_omarchy_integration.mjs
-@@ -57,10 +57,8 @@ const service = fs.readFileSync(path.join(pluginDir, 'Service.qml'), 'utf8');
- check(/^Panel\s*\{/m.test(panel), 'Panel.qml must expose an Omarchy Panel root');
+@@ -58,8 +58,6 @@ check(/^Panel\s*\{/m.test(panel), 'Panel.qml must expose an Omarchy Panel root');
  check(/moduleName:\s*"com\.stateset\.icommerce"/.test(panel), 'Panel.qml module id is missing');
  check(/stateset-omarchy/.test(panel), 'Panel.qml must use the fixed StateSet controller');
 -check(
@@ -34,4 +43,3 @@ diff --git a/scripts/ci/check_omarchy_integration.mjs b/scripts/ci/check_omarchy
 +check(/typeof controller !== "string"/.test(panel), 'Panel.qml must reject unknown actions');
  check(!/\bnpx\b/.test(panel), 'Panel.qml must not download code at runtime');
  check(/stateset-omarchy/.test(panel), 'Panel.qml must require the installed controller');
- check(/root\.launch\("attention"\)/.test(panel), 'Panel.qml must expose an attention workflow');
