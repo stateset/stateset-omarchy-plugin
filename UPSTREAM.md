@@ -17,6 +17,13 @@ upstream Omarchy integration checker. Review the resulting upstream diff, run
 the upstream CLI unit tests, and submit it through the main repository's normal
 review process.
 
+`upstream-version.txt` records the exact CLI release used by this plugin. It is
+deliberately separate from the plugin's own semantic version so standalone
+patch releases do not trigger automated downgrade PRs. Release synchronization
+updates both the generated runtime and this compatibility marker together. The
+exporter rewrites only the copied upstream manifest version to that CLI release,
+as required by the upstream packaging invariant.
+
 Do not release a later CLI version until the preserved mirror tests pass against
 its generated plugin. This prevents release synchronization from silently
 dropping security or operator-experience improvements.
