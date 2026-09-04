@@ -37,7 +37,7 @@ jobs:
           tag=$(git -C upstream tag --list 'cli-v*' --sort=-version:refname | head -n 1)
           test -n "$tag"
           version=${tag#cli-v}
-          current=$(node -p "require('./manifest.json').version")
+          current=$(tr -d '[:space:]' < upstream-version.txt)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$current" = "$version" ]; then
@@ -63,7 +63,9 @@ jobs:
             --exclude 'scripts/' \
             --exclude 'test/' \
             --exclude 'upstream/' \
+            --exclude 'upstream-version.txt' \
             "$RUNNER_TEMP/plugin/" ./
+          printf '%s\n' "${{ steps.release.outputs.version }}" > upstream-version.txt
       - name: Validate generated release
         if: steps.release.outputs.changed == 'true'
         env:

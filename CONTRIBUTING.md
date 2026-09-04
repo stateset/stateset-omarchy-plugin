@@ -49,3 +49,6 @@ coercing probe failures into apparently valid values.
 
 Any new setting belongs in both `barWidget.defaults` and `barWidget.schema`.
 Add focused model or security regression tests for every behavior change.
+For a plugin-only release, bump `manifest.json` without changing
+`upstream-version.txt`. The synchronization workflow owns that compatibility
+marker when a newer iCommerce CLI release is packaged.
